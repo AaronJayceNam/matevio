@@ -2,7 +2,7 @@
    updates instant. The API and WebSocket always go straight to the network;
    the HTML is network-first (so a new deploy's ?v= assets load immediately),
    and versioned static assets are cache-first. Bump CACHE to purge old caches. */
-const CACHE = "matevio-v38";
+const CACHE = "matevio-v39";
 const MSG_CACHE = "matevio-msg";   // holds the localized reminder text (never purged)
 const SHELL = [
   "/",
