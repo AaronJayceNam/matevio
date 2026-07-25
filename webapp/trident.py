@@ -405,10 +405,14 @@ class Trident:
         return moves
 
     def push(self, c, t):
+        if self.over:
+            return False
         occ = self.board[c]
         if occ is None:
             return False
         col = occ[0]
+        if col != self.turn:          # server-authoritative turn enforcement
+            return False
         legal = [(a, b, pr) for (a, b, pr) in self.legal_moves(col) if a == c and b == t]
         if not legal:
             return False
