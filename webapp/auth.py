@@ -237,6 +237,12 @@ def _init_db() -> None:
             friend_id TEXT NOT NULL,
             created TEXT,
             PRIMARY KEY (user_id, friend_id))""")
+        # FIX5: in-progress online games, so a match can resume after the free-tier
+        # server sleeps/restarts (which drops all in-memory games + WebSockets).
+        cur.execute("""CREATE TABLE IF NOT EXISTS online_games (
+            gid TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            updated TEXT)""")
         # server-authoritative rating column (added by migration on old DBs)
         if _IS_PG:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS rating INTEGER")
@@ -301,6 +307,59 @@ def apply_online_result(uid_w: str, uid_b: str, result: str):
         return None
     return {"white": {"before": rw, "after": nw, "delta": nw - rw},
             "black": {"before": rb, "after": nb, "delta": nb - rb}}
+
+
+# ---- FIX5: online-game snapshots (resume after a server restart) ---------------
+# These are best-effort: online.py calls them off the event loop (in a thread) and
+# ignores failures, so persistence never slows or breaks the live move path.
+def save_online_snapshot(gid: str, data: dict) -> None:
+    if not gid:
+        return
+    try:
+        _init_db()
+        txt = json.dumps(data or {}, ensure_ascii=False)
+        with _connect() as con:
+            cur = con.cursor()
+            if _IS_PG:
+                cur.execute(
+                    "INSERT INTO online_games (gid, data, updated) VALUES (%s, %s, %s) "
+                    "ON CONFLICT (gid) DO UPDATE SET data = EXCLUDED.data, updated = EXCLUDED.updated",
+                    (gid, txt, _now()))
+            else:
+                cur.execute(
+                    "INSERT INTO online_games (gid, data, updated) VALUES (?, ?, ?) "
+                    "ON CONFLICT(gid) DO UPDATE SET data = excluded.data, updated = excluded.updated",
+                    (gid, txt, _now()))
+            con.commit()
+    except Exception:
+        pass
+
+
+def load_online_snapshot(gid: str):
+    if not gid:
+        return None
+    try:
+        with _connect() as con:
+            cur = con.cursor()
+            cur.execute(f"SELECT data FROM online_games WHERE gid = {_ph()}", (gid,))
+            row = cur.fetchone()
+        if not row or not row[0]:
+            return None
+        return json.loads(row[0])
+    except Exception:
+        return None
+
+
+def delete_online_snapshot(gid: str) -> None:
+    if not gid:
+        return
+    try:
+        with _connect() as con:
+            cur = con.cursor()
+            cur.execute(f"DELETE FROM online_games WHERE gid = {_ph()}", (gid,))
+            con.commit()
+    except Exception:
+        pass
 
 
 def _hash_pw(pw: str, salt: str) -> str:

@@ -1437,7 +1437,46 @@ function randomLegalUci(state) {
   try { const m = parseFen(state.fen); if (m[from] && m[from].toLowerCase() === "p" && (uci[3] === "8" || uci[3] === "1")) uci += "q"; } catch (e) {}
   return uci;
 }
+// FIX7: a tiny, engine-free move policy for the WEAKEST levels — "grab material
+// that looks free, otherwise play randomly". It offloads trivial games from the
+// 0.1-CPU server entirely (and makes level 1-2 replies instant) without shipping
+// a GPL engine to the browser. Only the two lowest tiers use it; 3+ keep the
+// stronger server engine so difficulty still scales.
+const PIECE_VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 };
+function aiWeakMoveLocal(state, level) {
+  const legal = (state && state.legal) || {};
+  let map; try { map = parseFen(state.fen); } catch (e) { return null; }
+  if (!map) return null;
+  const froms = Object.keys(legal).filter((f) => legal[f] && legal[f].length);
+  if (!froms.length) return null;
+  let best = [], bestScore = 0;
+  for (const f of froms) {
+    const mover = PIECE_VAL[(map[f] || "p").toLowerCase()] || 1;
+    for (const to of legal[f]) {
+      const tgt = map[to]; if (!tgt) continue;                  // captures only
+      const gain = PIECE_VAL[tgt.toLowerCase()] || 0;
+      if (gain < mover) continue;                                // only obviously-good grabs
+      const score = gain * 10 - mover;
+      if (score > bestScore) { bestScore = score; best = [[f, to]]; }
+      else if (score === bestScore) best.push([f, to]);
+    }
+  }
+  const toUci = (ft) => {
+    let uci = ft[0] + ft[1];
+    if ((map[ft[0]] || "").toLowerCase() === "p" && (ft[1][1] === "8" || ft[1][1] === "1")) uci += "q";
+    return uci;
+  };
+  const randChance = level <= 1 ? 0.6 : 0.25;                    // level 1 blunders more
+  if (best.length && Math.random() >= randChance) return toUci(best[Math.floor(Math.random() * best.length)]);
+  return randomLegalUci(state);
+}
+
 async function aiComputeMoveLocal() {
+  // FIX7: weakest tiers run entirely client-side (no engine, no server call).
+  if (!AIG.variant && (!AIG.style || AIG.style === "default") && AIG.level <= 2) {
+    const wm = aiWeakMoveLocal(AIG.state, AIG.level);
+    if (wm) return wm;
+  }
   if (!USE_CLIENT_ENGINE) return null;                     // client engine too weak → use the server
   if (!(window.SF && SF.available)) return null;
   if (AIG.variant) return null;                            // Chess960 castling → server
@@ -2745,7 +2784,8 @@ function ogClearFallback() {
 }
 function ogArmFallback() {
   ogClearFallback();
-  let left = 15;
+  OG.searchStart = Date.now();
+  let left = 12;
   setStatus("ogSetupStatus", t("og_searching_count").replace("{n}", left));
   OG.fallbackTick = setInterval(() => {
     if (OG.started) { ogClearFallback(); return; }
@@ -2757,7 +2797,15 @@ function ogArmFallback() {
     if (OG.started) return;                       // matched in the meantime
     const el = $("ogFallback"); if (el) el.classList.remove("hidden");
     setStatus("ogSetupStatus", "");
-  }, 15000);
+    // FIX9: the AI offer is up, but we DON'T leave the queue — a real opponent
+    // can still match. Show a live elapsed timer so the wait feels transparent.
+    OG.fallbackTick = setInterval(() => {
+      if (OG.started) { ogClearFallback(); return; }
+      const secs = Math.round((Date.now() - (OG.searchStart || Date.now())) / 1000);
+      const note = document.getElementById("ogfbNote");
+      if (note) note.textContent = t("og_fb_searching").replace("{n}", secs);
+    }, 1000);
+  }, 12000);
 }
 // map the player's rating to a comparable AI difficulty level (1-10)
 function aiLevelForRating(r) {

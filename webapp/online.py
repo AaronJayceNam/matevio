@@ -124,6 +124,11 @@ class Lobby:
         #   apply(uid_w, uid_b, result) -> {'white':{before,after,delta}, 'black':{...}} | None
         self._resolve = (rating_hooks or {}).get("resolve")
         self._apply = (rating_hooks or {}).get("apply")
+        # FIX5: optional snapshot hooks (auth.py) so a game can resume after the
+        # free-tier server sleeps/restarts. All best-effort, run off the event loop.
+        self._snap_save = (rating_hooks or {}).get("snap_save")
+        self._snap_load = (rating_hooks or {}).get("snap_load")
+        self._snap_del = (rating_hooks or {}).get("snap_del")
         self.lock = asyncio.Lock()
         # queue entries / rooms values are (ws, name, rating, uid)
         self.queue: list[tuple[WebSocket, str, int, str | None]] = []
@@ -142,6 +147,66 @@ class Lobby:
         st["clockB"] = round(rb, 1)
         return st
 
+    # ---- FIX5: snapshot / rehydrate (best-effort, off the event loop) ---- #
+    def _snapshot_data(self, game: Game) -> dict:
+        rw, rb = game.remaining()
+        return {
+            "gid": game.gid,
+            "moves": list(game.moves),
+            "san": list(game.san),
+            "names": {"w": game.names[chess.WHITE], "b": game.names[chess.BLACK]},
+            "uids": {"w": game.uids[chess.WHITE], "b": game.uids[chess.BLACK]},
+            "ratings": {"w": game.ratings[chess.WHITE], "b": game.ratings[chess.BLACK]},
+            "clock": {"w": round(rw, 1), "b": round(rb, 1)},
+        }
+
+    def _fire_snapshot(self, snap: dict | None) -> None:
+        if self._snap_save is None or not snap:
+            return
+        try:
+            asyncio.get_event_loop().run_in_executor(None, self._snap_save, snap["gid"], snap)
+        except Exception:
+            pass
+
+    def _fire_delete(self, gid: str) -> None:
+        if self._snap_del is None or not gid:
+            return
+        try:
+            asyncio.get_event_loop().run_in_executor(None, self._snap_del, gid)
+        except Exception:
+            pass
+
+    def _rehydrate(self, s: dict):
+        """Rebuild a live Game from a snapshot: both seats vacant, clocks paused,
+        a fresh reconnect window for each. Returns the game, or None if unusable."""
+        try:
+            board = chess.Board()
+            for u in s.get("moves", []):
+                mv = chess.Move.from_uci(u)
+                if mv not in board.legal_moves:
+                    break
+                board.push(mv)
+            names, uids = s.get("names", {}), s.get("uids", {})
+            ratings, clk = s.get("ratings", {}), s.get("clock", {})
+            g = Game(None, names.get("w", "플레이어"), None, names.get("b", "플레이어"),
+                     uids.get("w"), uids.get("b"),
+                     int(ratings.get("w", 400)), int(ratings.get("b", 400)), s["gid"])
+            g.board = board
+            g.moves = list(s.get("moves", []))
+            g.san = list(s.get("san", []))
+            g.clock = {chess.WHITE: float(clk.get("w", CLOCK_START)),
+                       chess.BLACK: float(clk.get("b", CLOCK_START))}
+            now = time.monotonic()
+            g.turn_started = now                       # clock paused during downtime
+            g.disc_deadline = {chess.WHITE: now + RECONNECT_GRACE,
+                               chess.BLACK: now + RECONNECT_GRACE}
+            self.by_gid[g.gid] = g
+            if self._sweeper is None or self._sweeper.done():
+                self._sweeper = asyncio.create_task(self._sweep_clocks())
+            return g
+        except Exception:
+            return None
+
     async def _finish(self, game: Game, result: str, reason: str) -> None:
         """End a game: persist the server-authoritative Elo change exactly once
         and send each player their {before, after, delta} in the end message."""
@@ -157,6 +222,7 @@ class Lobby:
             if info:
                 end["rating"] = info["white"] if c == chess.WHITE else info["black"]
             await _send(game.ws[c], end)
+        self._fire_delete(game.gid)   # FIX5: finished game no longer needs a snapshot
 
     async def _start_game(self, a, b) -> None:
         """a/b are (ws, name, rating, uid); colors are assigned randomly."""
@@ -175,6 +241,8 @@ class Lobby:
                            "opponentRating": b[2], "gid": gid, "state": st})
         await _send(b[0], {"type": "start", "color": "b", "opponent": a[1],
                            "opponentRating": a[2], "gid": gid, "state": st})
+        game.last_snap = time.monotonic()
+        self._fire_snapshot(self._snapshot_data(game))   # FIX5: seed the snapshot
 
     def _drop_from_lobby(self, ws: WebSocket) -> None:
         self.queue = [e for e in self.queue if e[0] is not ws]
@@ -230,6 +298,7 @@ class Lobby:
         st = None
         result = None                  # set only when the flag falls before this move
         end_result = end_reason = None
+        snap = None                    # FIX5: throttled snapshot captured under the lock
         async with self.lock:
             game = self.games.get(ws)
             if game is None or game.over:
@@ -265,12 +334,17 @@ class Lobby:
                     self._cleanup_game(game)
                     end_result = st["result"]
                     end_reason = "checkmate" if game.board.is_checkmate() else "draw"
+                elif time.monotonic() - getattr(game, "last_snap", 0.0) > 3.0:
+                    game.last_snap = time.monotonic()   # FIX5: throttle to ~1 write / 3s
+                    snap = self._snapshot_data(game)
         # flag fell before the move: end on time, no state broadcast
         if st is None:
             return await self._finish(game, result, "timeout")
         payload = {"type": "state", "lastUci": uci, "state": st}
         for c in (chess.WHITE, chess.BLACK):
             await _send(game.ws[c], payload)
+        if snap is not None:
+            self._fire_snapshot(snap)   # non-blocking DB write, off the event loop
         if end_result is not None:
             await self._finish(game, end_result, end_reason)
 
@@ -385,6 +459,7 @@ class Lobby:
         opponent. The sweeper forfeits only if the grace expires. Reconnecting
         with the same account within the window (see resume) resumes the game."""
         notify_opp = None
+        snap = None
         async with self.lock:
             self._drop_from_lobby(ws)
             g = self.games.get(ws)
@@ -402,6 +477,9 @@ class Lobby:
             if self._sweeper is None or self._sweeper.done():
                 self._sweeper = asyncio.create_task(self._sweep_clocks())
             notify_opp = opp
+            g.last_snap = time.monotonic()
+            snap = self._snapshot_data(g)     # FIX5: freshest snapshot at the drop
+        self._fire_snapshot(snap)             # so a restart can still resume
         if notify_opp is not None:
             await _send(notify_opp, {"type": "opp_disconnected", "seconds": int(RECONNECT_GRACE)})
 
@@ -414,6 +492,22 @@ class Lobby:
             r = self._resolve(token)
             if r is not None:
                 uid = r[0]
+        # FIX5: the in-memory game may be gone (server restarted). Try to rebuild it
+        # from the Neon snapshot before giving up — load off the event loop.
+        if uid is not None and self._snap_load is not None:
+            have = False
+            async with self.lock:
+                have = gid in self.by_gid
+            if not have:
+                try:
+                    snap = await asyncio.get_event_loop().run_in_executor(None, self._snap_load, gid)
+                except Exception:
+                    snap = None
+                if snap and str(snap.get("gid")) == gid and uid in (
+                        (snap.get("uids") or {}).get("w"), (snap.get("uids") or {}).get("b")):
+                    async with self.lock:
+                        if gid not in self.by_gid:
+                            self._rehydrate(snap)
         game = None
         color = None
         opp_ws = None

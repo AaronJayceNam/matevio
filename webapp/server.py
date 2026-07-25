@@ -708,11 +708,18 @@ def study_html(req: StudyRequest):
 
 # Online multiplayer (WebSocket matchmaking + move relay) — /ws
 from webapp.online import register_online  # noqa: E402
-from webapp.auth import rating_for_token, apply_online_result  # noqa: E402
+from webapp.auth import (  # noqa: E402
+    rating_for_token, apply_online_result,
+    save_online_snapshot, load_online_snapshot, delete_online_snapshot,
+)
 # server-authoritative online rating: the lobby resolves each player's rating
 # from their auth token at match start and persists the Elo change on game end.
+# FIX5: snapshot hooks let an in-progress game resume after a server restart.
 register_online(app, _legal_state,
-                rating_hooks={"resolve": rating_for_token, "apply": apply_online_result})
+                rating_hooks={"resolve": rating_for_token, "apply": apply_online_result,
+                              "snap_save": save_online_snapshot,
+                              "snap_load": load_online_snapshot,
+                              "snap_del": delete_online_snapshot})
 
 # Accounts (register/login + server-saved progress) — /api/auth/*
 from webapp.auth import register_auth  # noqa: E402

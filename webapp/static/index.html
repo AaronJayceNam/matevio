@@ -18,7 +18,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=113">
+<link rel="stylesheet" href="/static/style.css?v=114">
 </head>
 <body>
 
@@ -187,8 +187,9 @@
           </div>
           <div class="status" id="ogSetupStatus"></div>
           <div class="og-fallback hidden" id="ogFallback">
-            <span class="ogfb-txt" data-i18n="og_fb_txt">지금은 상대가 없어요. AI와 바로 두시겠어요?</span>
+            <span class="ogfb-txt" data-i18n="og_fb_txt">아직 상대가 없어요. 계속 찾는 동안 AI와 한 판 어때요?</span>
             <button class="primary" id="ogFallbackBtn" data-i18n="og_fb_btn">🤖 AI와 두기</button>
+            <span class="ogfb-note" id="ogfbNote"></span>
           </div>
           <div class="og-friend">
             <h3 data-i18n="og_friend_title">친구와 하기 (초대 코드)</h3>
@@ -773,8 +774,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=113"></script>
-<script src="/static/app.js?v=113"></script>
+<script src="/static/i18n.js?v=114"></script>
+<script src="/static/app.js?v=114"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {
