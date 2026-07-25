@@ -5447,12 +5447,33 @@ function openPuzzleByLevel(lvl) {
   let n = 0;
   const iv = setInterval(() => { if ((PZ.list && PZ.list.length) || n++ > 40) { clearInterval(iv); if (PZ.list && PZ.list.length) go(); } }, 150);
 }
-function sharePuzzleLink(lvl) {
-  const url = location.origin + "/?p=" + lvl;
-  metric("share_puzzle");
-  if (navigator.share) { navigator.share({ title: "Matevio", text: t("pz_challenge_text"), url }).catch(() => {}); return; }
+// FEAT3: KakaoTalk-ready sharing. Prefers Kakao.Share when the SDK is loaded AND a
+// JavaScript key is configured (index.html reads a <meta name="kakao-key">); else
+// falls back to the Web Share API and finally the clipboard — so sharing works
+// today and lights up KakaoTalk the moment the owner adds a key.
+function kakaoReady() {
+  try { return !!(window.Kakao && window.Kakao.isInitialized && window.Kakao.isInitialized() && window.Kakao.Share); } catch (e) { return false; }
+}
+function shareVia(text, url, title) {
+  title = title || "Matevio";
+  if (kakaoReady()) {
+    try {
+      window.Kakao.Share.sendDefault({
+        objectType: "feed",
+        content: { title: title, description: text, imageUrl: location.origin + "/static/icons/icon-512.png",
+          link: { mobileWebUrl: url, webUrl: url } },
+        buttons: [{ title: t("kakao_open"), link: { mobileWebUrl: url, webUrl: url } }],
+      });
+      return;
+    } catch (e) {}
+  }
+  if (navigator.share) { navigator.share({ title, text, url }).catch(() => {}); return; }
   try { navigator.clipboard.writeText(url); if (typeof shareFlash === "function") shareFlash(t("pz_link_copied")); }
   catch (e) { try { prompt(t("pz_link_copied"), url); } catch (e2) {} }
+}
+function sharePuzzleLink(lvl) {
+  metric("share_puzzle");
+  shareVia(t("pz_challenge_text"), location.origin + "/?p=" + lvl);
 }
 function showLanding(ic, title, sub, goLabel, goFn) {
   const m = document.getElementById("landingModal");
@@ -5958,12 +5979,16 @@ async function stampVisitState() {
     const c = await caches.open("matevio-msg");
     const streak = (typeof dailyStreakCount === "function") ? dailyStreakCount() : 0;
     const dailyDone = (typeof isDailySolved === "function") ? !!isDailySolved() : false;
+    // FEAT2: also carry whether today's arena is still open, so the reminder can
+    // nudge the highest-value undone thing (arena > daily-streak).
+    const arenaDone = (typeof arenaDoneToday === "function") ? !!arenaDoneToday() : false;
     await c.put("/__reminder_state", new Response(JSON.stringify({
       date: (typeof dateStr === "function") ? dateStr() : "",
-      streak, dailyDone,
+      streak, dailyDone, arenaDone,
       title: (typeof t === "function") ? t("notif_title") : "",
       body: (typeof t === "function") ? t("notif_body") : "",
       body_streak: (typeof t === "function") ? t("notif_body_streak") : "",
+      body_arena: (typeof t === "function") ? t("notif_body_arena") : "",
     }), { headers: { "Content-Type": "application/json" } }));
   } catch (e) {}
 }

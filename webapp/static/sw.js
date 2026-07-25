@@ -2,7 +2,7 @@
    updates instant. The API and WebSocket always go straight to the network;
    the HTML is network-first (so a new deploy's ?v= assets load immediately),
    and versioned static assets are cache-first. Bump CACHE to purge old caches. */
-const CACHE = "matevio-v60";
+const CACHE = "matevio-v61";
 const MSG_CACHE = "matevio-msg";   // holds the localized reminder text (never purged)
 const SHELL = [
   "/",
@@ -49,8 +49,10 @@ async function showDailyReminder() {
     const s = await caches.open(MSG_CACHE).then((c) => c.match("/__reminder_state"));
     if (s) {
       const j = await s.json();
-      if (j.date === _todayStr() && j.dailyDone) return;   // already done today → don't nag
+      if (j.date === _todayStr() && j.dailyDone && j.arenaDone) return;   // nothing left today → don't nag
+      // pick the highest-value undone thing: streak-at-risk > arena > default
       if (j.streak >= 2 && j.body_streak) body = j.body_streak.replace("{n}", j.streak);
+      else if (j.arenaDone === false && j.body_arena) body = j.body_arena;
       if (j.title) title = j.title;
     }
   } catch (e3) {}

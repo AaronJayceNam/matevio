@@ -12,13 +12,28 @@
 <meta property="og:url" content="https://matevio.com/">
 <meta property="og:type" content="website">
 <link rel="manifest" href="/manifest.webmanifest">
+<!-- FEAT3: KakaoTalk share. Put your Kakao JavaScript key in the content below to
+     enable native KakaoTalk sharing; leave empty to use the Web Share API instead. -->
+<meta name="kakao-key" content="">
+<script>
+(function () {
+  var k = (document.querySelector('meta[name="kakao-key"]') || {}).content;
+  if (!k) return;   // no key configured → Kakao share stays off (Web Share used)
+  var s = document.createElement("script");
+  s.src = "https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js";
+  s.integrity = "sha384-TiCUE00h649CAMonG018J2ujOgDKW/kVWlChEuu4jK2vxfAAD0eZxzCKakxg55G4";
+  s.crossOrigin = "anonymous";
+  s.onload = function () { try { if (window.Kakao && !window.Kakao.isInitialized()) window.Kakao.init(k); } catch (e) {} };
+  document.head.appendChild(s);
+})();
+</script>
 <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-180.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=129">
+<link rel="stylesheet" href="/static/style.css?v=130">
 </head>
 <body>
 
@@ -880,8 +895,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=129"></script>
-<script src="/static/app.js?v=129"></script>
+<script src="/static/i18n.js?v=130"></script>
+<script src="/static/app.js?v=130"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {

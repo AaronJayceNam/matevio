@@ -231,6 +231,8 @@ var I18N = {
   notif_title:   { ko: "오늘의 퍼즐 🔥", en: "Today's puzzle 🔥", ja: "今日のパズル 🔥", zh: "今日谜题 🔥", es: "Puzzle de hoy 🔥" },
   notif_body:    { ko: "스트릭을 지키세요 — 오늘의 퍼즐이 기다려요!", en: "Keep your streak alive — today's puzzle is waiting!", ja: "ストリークを守ろう — 今日のパズルが待っています!", zh: "保持连胜 — 今日谜题在等你!", es: "Mantén tu racha — ¡el puzzle de hoy te espera!" },
   notif_body_streak: { ko: "🔥 {n}일 스트릭이 오늘 끊길 수 있어요 — 퍼즐 하나면 지켜요!", en: "🔥 Your {n}-day streak ends today — one puzzle keeps it alive!", ja: "🔥 {n}日ストリークが今日途切れます — パズル1問で守れます!", zh: "🔥 你的{n}天连胜今天可能中断 — 一道谜题即可保住!", es: "🔥 Tu racha de {n} días termina hoy — ¡un puzzle la mantiene!" },
+  notif_body_arena: { ko: "🏆 오늘의 아레나가 열렸어요 — 5문제로 랭킹에 도전!", en: "🏆 Today's Arena is live — race 5 puzzles for the rank!", ja: "🏆 今日のアリーナ開催中 — 5問でランキングに挑戦!", zh: "🏆 今日竞技场开放 — 5题冲榜!", es: "🏆 La Arena de hoy está activa — ¡5 puzzles por el ranking!" },
+  kakao_open:     { ko: "열기", en: "Open", ja: "開く", zh: "打开", es: "Abrir" },
   softask_msg:   { ko: "🔔 홈 화면에 추가하고 매일 퍼즐 알림으로 스트릭을 지켜요", en: "🔔 Add to home screen & get daily puzzle reminders to keep your streak", ja: "🔔 ホーム画面に追加して、毎日のパズル通知でストリークを守ろう", zh: "🔔 添加到主屏幕，每日谜题提醒助你保持连胜", es: "🔔 Añade a la pantalla de inicio y recibe recordatorios diarios" },
   softask_install: { ko: "📲 설치", en: "📲 Install", ja: "📲 インストール", zh: "📲 安装", es: "📲 Instalar" },
   softask_notify: { ko: "🔔 알림 켜기", en: "🔔 Enable alerts", ja: "🔔 通知をオン", zh: "🔔 开启提醒", es: "🔔 Activar avisos" },
