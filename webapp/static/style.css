@@ -17,7 +17,7 @@
   /* ink */
   --ink:#e8edf3;
   --muted:#9aa6b4;
-  --faint:#6a7583;
+  --faint:#8e9aac;   /* raised from #6a7583 to clear WCAG AA (4.5:1) for small text on dark panels */
   /* brand */
   --accent:#4fb877;
   --accent2:#63cc8d;
@@ -622,14 +622,22 @@ body.ingame{ padding-bottom:0 !important; }
     border-top:1px solid var(--line2);
     padding:6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
     box-shadow:0 -8px 24px -12px rgba(16,24,40,.2); }
-  .bottomnav button{ flex:1; background:none; border:none; cursor:pointer; color:var(--muted);
-    display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 2px; font-size:11px; font-weight:700; border-radius:12px; }
+  .bottomnav button{ position:relative; flex:1; min-width:0; background:none; border:none; cursor:pointer; color:var(--muted);
+    display:flex; flex-direction:column; align-items:center; gap:2px; padding:7px 2px 6px; font-size:11px; font-weight:700; border-radius:12px; }
   .bottomnav button .bi{ font-size:21px; line-height:1; filter:grayscale(.35) opacity(.75); transition:.15s; }
-  .bottomnav button.active{ color:var(--accent-deep); }
+  .bottomnav button .bl{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* clearer active state: a filled pill behind the icon + an accent top bar */
+  .bottomnav button.active{ color:var(--accent); }
   .bottomnav button.active .bi{ filter:none; transform:translateY(-1px); }
-  .bottomnav button.active .bl{ color:var(--accent-deep); }
+  .bottomnav button.active .bl{ color:var(--accent); }
+  .bottomnav button.active::before{ content:""; position:absolute; top:0; left:50%; transform:translateX(-50%);
+    width:26px; height:3px; border-radius:0 0 3px 3px; background:var(--accent); }
+  .bottomnav button.active .bi{ background:rgba(79,184,119,.15); border-radius:999px; padding:3px 12px; }
 }
 @media (max-width:560px){
+  /* FIX10: puzzle controls form a stable even grid instead of a ragged wrap */
+  #tab-puzzle .controls{ display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; }
+  #tab-puzzle .controls .ghost{ width:100%; padding:11px 6px; font-size:12.5px; min-height:44px; }
   header.top{ padding:10px 12px; gap:8px; }
   header.top h1{ font-size:16px; }
   header.top h1::before{ width:28px; height:28px; font-size:16px; border-radius:9px; }
@@ -1111,9 +1119,10 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
    ============================================================ */
 /* MOBILE: the main action docks to the bottom of the screen, always reachable */
 @media (max-width:760px){
-  .setup-go{ position:fixed; left:12px; right:12px; bottom:74px; z-index:30; margin:0 !important; }
+  /* dock clears the bottom nav AND the home-indicator safe area on notched phones */
+  .setup-go{ position:fixed; left:12px; right:12px; bottom:calc(74px + env(safe-area-inset-bottom, 0px)); z-index:30; margin:0 !important; }
   .setup-go .primary{ box-shadow:0 12px 30px -8px rgba(0,0,0,.75) !important; }
-  .og-actions{ position:fixed; left:12px; right:12px; bottom:74px; z-index:30; margin:0 !important; }
+  .og-actions{ position:fixed; left:12px; right:12px; bottom:calc(74px + env(safe-area-inset-bottom, 0px)); z-index:30; margin:0 !important; }
   .og-actions .primary{ box-shadow:0 12px 30px -8px rgba(0,0,0,.75) !important; }
   /* keep the last card clear of the docked button */
   #tab-ai .cols > div:last-child, #tab-online .cols > div:last-child{ padding-bottom:76px; }
@@ -1406,7 +1415,22 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
   #confetti, .myturn-pulse{ animation:none !important; }
   .result-box, .hub-today, .pzd-btn, .play-mode, .weak-cta{ transition:none !important; }
   .shake{ animation:none !important; }
+  /* ADD10: also calm the coach avatar, low-time clock, puzzle flash, meters */
+  #coachAvatar, .coach-av, .coach-av.speaking, .pv-clock, .pv-clock.low, .pz-flash,
+  .pulse-hint, .hq-track-fill, .lg-fill, .xp-fill, .hq-fill{ animation:none !important; transition:none !important; }
+  html{ scroll-behavior:auto !important; }
 }
+
+/* ADD10: a visible keyboard-focus ring on EVERY interactive control (was only on
+   inputs / seg-btn / sliders), so keyboard + switch users can see where they are. */
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible,
+.myseg:focus-visible, .play-mode:focus-visible, .diflevel:focus-visible,
+.hub-act:focus-visible, .bottomnav button:focus-visible, .tabs button:focus-visible{
+  outline:2px solid var(--accent2); outline-offset:2px; border-radius:8px;
+}
+/* ADD10: enforce a comfortable minimum tap target on the smallest controls */
+.iconbtn{ min-width:40px; min-height:40px; }
+.fr-del, .fr-play, .fr-challenge, .lb-tab, .pz-cats button{ min-height:40px; }
 
 /* ---- learn: tactic/endgame lessons (v-learn2) ---- */
 .latk{ box-shadow:inset 0 0 0 3px rgba(220,80,60,.9); }
