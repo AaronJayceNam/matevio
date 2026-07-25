@@ -1807,8 +1807,9 @@ function aiEndGame() {
   if (kind === "win" && typeof suggestSaveProgress === "function") suggestSaveProgress();   // guests: save nudge
   if (kind === "win" && typeof metric === "function") metric("first_win", { once: true });   // ADD10 funnel
   if (kind === "win" && typeof maybeFirstSuccessSoftAsk === "function") setTimeout(maybeFirstSuccessSoftAsk, 1400);   // ADD5
-  // MODE3 서바이벌 래더: a win climbs to the next level; any non-win ends the run.
+  // MODE3 서바이벌 래더 / MODE6 보스 러시: route to their own result flows.
   if (typeof LADDER !== "undefined" && LADDER.active) { return ladderEndGame(kind); }
+  if (typeof BOSS !== "undefined" && BOSS.active) { return bossEndGame(kind); }
 
   // Beating this level grants its title (if it's a new personal best).
   const T = (typeof t === "function") ? t : ((k) => k);
@@ -1847,7 +1848,7 @@ function aiEndGame() {
   presentResult(opts);
 }
 
-async function aiStart() {
+async function aiStart(opts) {
   hideResult();
   document.body.classList.remove("gameover");
   const ge = $("gameExit"); if (ge) ge.classList.add("hidden");
@@ -1858,6 +1859,8 @@ async function aiStart() {
   AIG.moves = []; AIG.sel = null; AIG.over = false; AIG.thinking = false; AIG.started = true; AIG.hint = null;
   AIG.variant = !!($("ai960") && $("ai960").checked);
   AIG.startFen = null;
+  // MODE4 기물 접기: start from a custom odds position (no 960 in that case)
+  if (opts && opts.startFen) { AIG.startFen = opts.startFen; AIG.variant = false; }
   if (USE_CLIENT_ENGINE && window.SF && SF.available) { SF.warmup(); SF.newGame(); }   // preload engine + clear hash
   $("aiAnalyze").classList.add("hidden");
   const T = (typeof t === "function") ? t : ((k) => k);
@@ -2262,6 +2265,87 @@ function ladderEndGame(kind) {
               { label: T("card_share"), onClick: () => { if (typeof shareResultCard === "function") shareResultCard({ icon: "🪜", title: T("ladder_card").replace("{n}", reached), sub: "Survival Ladder" }); } },
               { label: T("exit_btn"), onClick: () => exitImmersive() }] });
 }
+
+// =========================================================================== //
+// MODE4: PIECE ODDS (기물 접기) — face the AI up or down material by starting from
+// a modified position. Reuses the AI game flow via aiStart({startFen}).
+// =========================================================================== //
+const ODDS = {
+  n_up: "rnbqkb1r/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",   // AI (black) down a knight
+  b_up: "rn1qkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",   // AI down a bishop
+  r_up: "1nbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQk - 0 1",    // AI down a rook
+  q_up: "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",   // AI down the queen
+  n_down: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/1NBQKBNR w KQkq - 0 1", // I (white) down a knight
+};
+function startOdds(kind) {
+  const fen = ODDS[kind]; if (!fen) return;
+  const col = $("aiColor"); if (col) col.value = "w";       // odds set from White's POV
+  const c960 = $("ai960"); if (c960) c960.checked = false;
+  const st = $("aiStyle"); if (st) st.value = "default";
+  switchTab("ai");
+  if (typeof metric === "function") metric("piece_odds");
+  aiStart({ startFen: fen });
+}
+
+// =========================================================================== //
+// MODE6: BOSS GAUNTLET (보스 러시) — a campaign of named boss bots on the existing
+// engine; beat one to unlock the next. Progress persists. Reuses aiEndGame.
+// =========================================================================== //
+const BOSSES = [
+  { id: "b1", ic: "🐣", level: 3 }, { id: "b2", ic: "🦊", level: 4 }, { id: "b3", ic: "🐺", level: 5 },
+  { id: "b4", ic: "🦅", level: 6 }, { id: "b5", ic: "🐍", level: 7 }, { id: "b6", ic: "🦁", level: 8 },
+  { id: "b7", ic: "🐉", level: 9 }, { id: "b8", ic: "👹", level: 11 }, { id: "b9", ic: "🤖", level: 13 },
+  { id: "b10", ic: "👑", level: 15 },
+];
+const BOSS = { active: false, i: 0 };
+function bossCleared() { return +(localStorage.getItem("cc_boss_cleared") || 0); }
+function startBoss(i) {
+  if (i > bossCleared() || i >= BOSSES.length) return;   // locked / out of range
+  BOSS.active = true; BOSS.i = i;
+  const sel = $("aiLevel"); if (sel) sel.value = String(BOSSES[i].level);
+  const style = $("aiStyle"); if (style) style.value = "default";
+  const c960 = $("ai960"); if (c960) c960.checked = false;
+  const col = $("aiColor"); if (col) col.value = "w";
+  switchTab("ai");
+  if (typeof metric === "function") metric("boss_fight");
+  aiStart();
+  if (typeof shareFlash === "function") setTimeout(() => shareFlash(BOSSES[i].ic + " " + t("boss_" + BOSSES[i].id)), 500);
+}
+function bossEndGame(kind) {
+  const T = (typeof t === "function") ? t : ((k) => k);
+  BOSS.active = false;
+  if (kind === "win") {
+    if (BOSS.i >= bossCleared()) localStorage.setItem("cc_boss_cleared", String(BOSS.i + 1));
+    if (typeof xpAdd === "function") xpAdd(20);
+    const hasNext = BOSS.i + 1 < BOSSES.length;
+    showResult({ kind: "win", icon: BOSSES[BOSS.i].ic, title: T("boss_beat").replace("{name}", T("boss_" + BOSSES[BOSS.i].id)),
+      sub: hasNext ? T("boss_unlock") : T("boss_alldone"),
+      actions: [
+        hasNext ? { label: T("boss_next"), primary: true, onClick: () => { hideResult(); startBoss(BOSS.i + 1); } }
+                : { label: T("exit_btn"), primary: true, onClick: () => exitImmersive() },
+        { label: T("boss_list"), onClick: () => { hideResult(); exitImmersive(); openBossModal(); } },
+      ] });
+    return;
+  }
+  showResult({ kind: "loss", icon: "💀", title: T("boss_lost").replace("{name}", T("boss_" + BOSSES[BOSS.i].id)), sub: T("boss_retry"),
+    actions: [{ label: T("boss_again"), primary: true, onClick: () => { hideResult(); startBoss(BOSS.i); } },
+              { label: T("exit_btn"), onClick: () => exitImmersive() }] });
+}
+function openBossModal() {
+  const m = document.getElementById("bossModal"); if (!m) return;
+  const grid = document.getElementById("bossGrid"); if (!grid) return;
+  const cleared = bossCleared();
+  grid.innerHTML = BOSSES.map((b, i) => {
+    const state = i < cleared ? "cleared" : (i === cleared ? "current" : "locked");
+    return '<button class="boss-cell ' + state + '" data-boss="' + i + '"' + (state === "locked" ? " disabled" : "") + ">" +
+      '<span class="boss-ic">' + (state === "locked" ? "🔒" : b.ic) + "</span>" +
+      '<span class="boss-name">' + t("boss_" + b.id) + "</span>" +
+      '<span class="boss-lv">Lv ' + b.level + (state === "cleared" ? " ✓" : "") + "</span></button>";
+  }).join("");
+  grid.querySelectorAll(".boss-cell").forEach((c) => { if (!c.disabled) c.onclick = () => { closeBossModal(); startBoss(+c.dataset.boss); }; });
+  m.classList.remove("hidden");
+}
+function closeBossModal() { const m = document.getElementById("bossModal"); if (m) m.classList.add("hidden"); }
 
 // =========================================================================== //
 // DAILY PUZZLE + STREAK CALENDAR — one puzzle a day (same for everyone, chosen
@@ -2839,6 +2923,9 @@ document.querySelectorAll("#pzCats button").forEach((b) => {
 if ($("pzRecommend")) $("pzRecommend").onclick = () => loadAdaptivePuzzle();
 if ($("pzStormBtn")) $("pzStormBtn").onclick = () => startStorm();   // MODE1
 if ($("ladderBtn")) $("ladderBtn").onclick = () => startLadder();     // MODE3
+if ($("bossBtn")) $("bossBtn").onclick = () => openBossModal();       // MODE6
+if ($("bossClose")) $("bossClose").onclick = () => closeBossModal();
+document.querySelectorAll("[data-odds]").forEach((b) => { b.onclick = () => startOdds(b.dataset.odds); });   // MODE4
 $("pzPrev").onclick = () => loadPuzzle(PZ.idx - 1);
 $("pzNext").onclick = () => loadPuzzle(PZ.idx + 1);
 $("pzReset").onclick = () => loadPuzzle(PZ.idx);
