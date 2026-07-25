@@ -33,7 +33,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=132">
+<link rel="stylesheet" href="/static/style.css?v=133">
 </head>
 <body>
 
@@ -79,6 +79,19 @@
     <div class="boss-grid" id="bossGrid"></div>
     <div class="auth-actions" style="margin-top:14px"><button class="ghost" id="bossClose" data-i18n="landing_skip">닫기</button></div>
   </div>
+</div>
+
+<!-- 3-player Trident chess (hotseat) -->
+<div class="tri-game hidden" id="triGame">
+  <div class="tri-top">
+    <div class="tri-info" id="triInfo"></div>
+    <div class="tri-actions">
+      <button class="ghost" id="triNewBtn" data-i18n="tri_new">새 게임</button>
+      <button class="ghost" id="triCloseBtn" data-i18n="landing_skip">닫기</button>
+    </div>
+  </div>
+  <svg id="triBoard" viewBox="0 0 440 470" xmlns="http://www.w3.org/2000/svg" aria-label="3-player board"></svg>
+  <div class="tri-help" data-i18n="tri_help">같은 기기에서 3명이 번갈아 둡니다 · 시계방향 · 먼저 체크메이트하면 즉시 우승</div>
 </div>
 
 <!-- MODE2: correspondence game board -->
@@ -481,6 +494,7 @@
           <button class="ai-mode-btn" id="ladderBtn" data-i18n="ladder_start">🪜 서바이벌 래더 — 한 목숨으로 레벨 등반</button>
           <button class="ai-mode-btn" id="bossBtn" data-i18n="boss_start">🐲 보스 러시 — 보스 봇 정복</button>
           <button class="ai-mode-btn" id="endgameBtn" data-i18n="eg_start">♟️ 엔드게임 사다리 — 이론적 끝내기 훈련</button>
+          <button class="ai-mode-btn" id="triBtn" data-i18n="tri_start">♛ 3인 체스 (핫시트 · 베타)</button>
           <div class="odds-h" data-i18n="odds_h">🎯 기물 접기 — AI가 접고 시작 (내가 유리)</div>
           <div class="odds-row">
             <button class="odds-btn" data-odds="n_up" data-i18n="odds_n">나이트</button>
@@ -923,8 +937,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=132"></script>
-<script src="/static/app.js?v=132"></script>
+<script src="/static/i18n.js?v=133"></script>
+<script src="/static/app.js?v=133"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {

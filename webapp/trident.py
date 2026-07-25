@@ -434,6 +434,46 @@ class Trident:
 
 
 # --------------------------------------------------------------------------- #
+# HTTP endpoints (stateless engine access — used by the hotseat client; the
+# online lobby keeps authoritative state server-side and calls the engine directly)
+# --------------------------------------------------------------------------- #
+def register_trident(app) -> None:
+    from pydantic import BaseModel
+
+    class TMove(BaseModel):
+        board: list
+        turn: int
+        frm: int
+        to: int
+
+    def _state(g):
+        d = g.to_dict()
+        d["ok"] = True
+        d["moves"] = [] if g.over else [[a, b] for (a, b, pr) in g.legal_moves(g.turn)]
+        return d
+
+    @app.post("/api/trident/new")
+    def trident_new():
+        return _state(Trident())
+
+    @app.post("/api/trident/move")
+    def trident_move(req: TMove):
+        g = Trident()
+        try:
+            g.board = [None if x is None else (int(x[0]), str(x[1])) for x in req.board]
+        except Exception:
+            return {"ok": False}
+        if len(g.board) != 96:
+            return {"ok": False}
+        g.turn = int(req.turn) % 3
+        if not g.push(int(req.frm), int(req.to)):
+            return {"ok": False, "illegal": True}
+        d = _state(g)
+        d["last"] = [int(req.frm), int(req.to)]
+        return d
+
+
+# --------------------------------------------------------------------------- #
 # self-test
 # --------------------------------------------------------------------------- #
 if __name__ == "__main__":

@@ -2392,6 +2392,115 @@ async function openCorrGame(gid) {
   renderCorrBoard();
 }
 function closeCorrGame() { const m = document.getElementById("corrGameModal"); if (m) m.classList.add("hidden"); CORR.gid = null; }
+
+// =========================================================================== //
+// 3-PLAYER: TRIDENT CHESS (핫시트) — renders the 96-cell hex board (3 sectors of
+// 8x4 as an isometric rhombille around a central hub) and drives a pass-and-play
+// game via the server engine (/api/trident/*). Also the board UI the online 3P
+// lobby will reuse.
+// =========================================================================== //
+const TRI = { board: null, turn: 0, moves: [], over: false, winner: null, sel: null, last: null, busy: false };
+const TRI_GLYPH = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
+const TRI_PIECE_FILL = ["#f4f5f7", "#8f9bb3", "#20242c"];     // white / grey / black armies
+const TRI_PIECE_STROKE = ["#2a2f38", "#20242c", "#c9d2df"];
+function triCellSRF(i) { const s = Math.floor(i / 32), rem = i % 32; return [s, Math.floor(rem / 8) + 1, rem % 8]; }
+function triGeom() {
+  const U = 30, cx = 220, cy = 232;
+  const ang = (k) => (Math.PI / 2) + k * (2 * Math.PI / 3);   // 90 / 210 / 330 deg
+  const e = (k) => [Math.cos(ang(k)), -Math.sin(ang(k))];      // SVG y-down flip
+  return { U, cx, cy, e };
+}
+function triCorner(s, fa, rb, G) {
+  const ef = G.e(s), er = G.e((s + 1) % 3);
+  return [G.cx + fa * G.U * ef[0] + rb * G.U * er[0], G.cy + fa * G.U * ef[1] + rb * G.U * er[1]];
+}
+function triCellPoly(i, G) {
+  const [s, r, f] = triCellSRF(i); const rb = 4 - r;
+  return [triCorner(s, f, rb, G), triCorner(s, f + 1, rb, G), triCorner(s, f + 1, rb + 1, G), triCorner(s, f, rb + 1, G)];
+}
+function triCellCenter(i, G) { const p = triCellPoly(i, G); return [(p[0][0] + p[2][0]) / 2, (p[0][1] + p[2][1]) / 2]; }
+
+async function triNew() {
+  TRI.sel = null; TRI.last = null; TRI.busy = true;
+  try { const r = await api("/api/trident/new"); Object.assign(TRI, { board: r.board, turn: r.turn, moves: r.moves, over: r.over, winner: r.winner }); }
+  catch (e) { TRI.busy = false; return; }
+  TRI.busy = false;
+  if (typeof metric === "function") metric("trident_hotseat");
+  triRender();
+}
+function triOpen() {
+  const m = document.getElementById("triGame"); if (m) m.classList.remove("hidden");
+  if (!TRI.board) triNew(); else triRender();
+}
+function triClose() { const m = document.getElementById("triGame"); if (m) m.classList.add("hidden"); }
+function triLegalTargets() {
+  if (TRI.sel == null) return [];
+  return TRI.moves.filter((m) => m[0] === TRI.sel).map((m) => m[1]);
+}
+function triClick(i) {
+  if (TRI.busy || TRI.over) return;
+  const occ = TRI.board[i];
+  if (TRI.sel != null) {
+    if (triLegalTargets().includes(i)) return triMove(TRI.sel, i);
+    if (occ && occ[0] === TRI.turn) { TRI.sel = i; return triRender(); }
+    TRI.sel = null; return triRender();
+  }
+  if (occ && occ[0] === TRI.turn) { TRI.sel = i; triRender(); }
+}
+async function triMove(frm, to) {
+  TRI.busy = true; TRI.sel = null;
+  let r; try { r = await api("/api/trident/move", { board: TRI.board, turn: TRI.turn, frm, to }); } catch (e) { TRI.busy = false; return; }
+  TRI.busy = false;
+  if (!r || !r.ok) { triRender(); return; }
+  Object.assign(TRI, { board: r.board, turn: r.turn, moves: r.moves, over: r.over, winner: r.winner, last: r.last || null });
+  triRender();
+}
+function triRender() {
+  const svg = document.getElementById("triBoard"); if (!svg || !TRI.board) return;
+  const G = triGeom();
+  const targets = triLegalTargets();
+  const T = (typeof t === "function") ? t : ((k) => k);
+  let s = "";
+  for (let i = 0; i < 96; i++) {
+    const [sec, r, f] = triCellSRF(i);
+    const poly = triCellPoly(i, G).map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+    const light = (f + r) % 2 === 0;
+    let fill = light ? "#e9edcf" : "#7f9b5b";
+    if (TRI.last && (i === TRI.last[0] || i === TRI.last[1])) fill = light ? "#f4e58c" : "#c7bb52";
+    if (i === TRI.sel) fill = "#ffcf5a";
+    s += '<polygon points="' + poly + '" fill="' + fill + '" stroke="#00000022" stroke-width="0.6" data-tri="' + i + '"/>';
+  }
+  // home-rank ownership tint (r==1) — a colored edge per army
+  const tint = ["#e8534d", "#c9c9c9", "#2b3550"];
+  for (let sec = 0; sec < 3; sec++) {
+    for (let f = 0; f < 8; f++) {
+      const i = sec * 32 + f;   // r=1
+      const poly = triCellPoly(i, G).map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+      s += '<polygon points="' + poly + '" fill="none" stroke="' + tint[sec] + '" stroke-width="1.6" pointer-events="none"/>';
+    }
+  }
+  // legal-move dots
+  for (const tg of targets) {
+    const c = triCellCenter(tg, G);
+    const cap = TRI.board[tg] ? 8.5 : 4.5;
+    s += '<circle cx="' + c[0].toFixed(1) + '" cy="' + c[1].toFixed(1) + '" r="' + cap + '" fill="' + (TRI.board[tg] ? "#00000033" : "#00000030") + '" pointer-events="none"/>';
+  }
+  // pieces
+  for (let i = 0; i < 96; i++) {
+    const occ = TRI.board[i]; if (!occ) continue;
+    const c = triCellCenter(i, G);
+    s += '<text x="' + c[0].toFixed(1) + '" y="' + (c[1] + 8).toFixed(1) + '" text-anchor="middle" font-size="24" ' +
+      'fill="' + TRI_PIECE_FILL[occ[0]] + '" stroke="' + TRI_PIECE_STROKE[occ[0]] + '" stroke-width="0.9" pointer-events="none">' +
+      TRI_GLYPH[occ[1].toLowerCase()] + "</text>";
+  }
+  svg.innerHTML = s;
+  svg.querySelectorAll("[data-tri]").forEach((el) => { el.onclick = () => triClick(+el.dataset.tri); });
+  const info = document.getElementById("triInfo");
+  if (info) {
+    if (TRI.over) info.innerHTML = "🏆 " + T("tri_win").replace("{who}", T("tri_c" + TRI.winner));
+    else info.innerHTML = '<span class="tri-turn tri-c' + TRI.turn + '">●</span> ' + T("tri_turn").replace("{who}", T("tri_c" + TRI.turn));
+  }
+}
 function renderCorrBoard() {
   const st = CORR.state; const board = document.getElementById("corrBoard"); if (!board || !st) return;
   const T = (typeof t === "function") ? t : ((k) => k);
@@ -3285,6 +3394,9 @@ if ($("bossClose")) $("bossClose").onclick = () => closeBossModal();
 document.querySelectorAll("[data-odds]").forEach((b) => { b.onclick = () => startOdds(b.dataset.odds); });   // MODE4
 if ($("endgameBtn")) $("endgameBtn").onclick = () => openEndgameModal();   // MODE7
 if ($("egClose")) $("egClose").onclick = () => closeEndgameModal();
+if ($("triBtn")) $("triBtn").onclick = () => triOpen();                     // 3-player
+if ($("triNewBtn")) $("triNewBtn").onclick = () => triNew();
+if ($("triCloseBtn")) $("triCloseBtn").onclick = () => triClose();
 if ($("opSaveBtn")) $("opSaveBtn").onclick = () => repSaveCurrentOpening();   // FEAT4
 $("pzPrev").onclick = () => loadPuzzle(PZ.idx - 1);
 $("pzNext").onclick = () => loadPuzzle(PZ.idx + 1);

@@ -727,6 +727,9 @@ register_auth(app)
 # MODE2: correspondence / daily chess (async games in Neon) + MODE8 async swiss
 from webapp.corr import register_corr  # noqa: E402
 register_corr(app)
+# 3-player Trident chess engine endpoints (hotseat)
+from webapp.trident import register_trident  # noqa: E402
+register_trident(app)
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 

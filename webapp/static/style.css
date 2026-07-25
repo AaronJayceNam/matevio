@@ -1483,6 +1483,18 @@ body.storm-on #pzArenaBtn{ display:none !important; }
 .corr-tag.done{ background:transparent; color:var(--faint); }
 .corr-info{ font-size:var(--fs-sm); color:var(--muted); text-align:center; }
 #corrBoard{ width:min(400px, 86vw); }
+/* 3-player Trident chess (hotseat) */
+.tri-game{ position:fixed; inset:0; z-index:1100; background:var(--bg); display:flex; flex-direction:column;
+  align-items:center; padding:12px calc(12px + env(safe-area-inset-right,0)) calc(12px + env(safe-area-inset-bottom,0)) calc(12px + env(safe-area-inset-left,0)); overflow:auto; }
+.tri-game.hidden{ display:none; }
+.tri-top{ width:min(460px,96vw); display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px; }
+.tri-info{ font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px; }
+.tri-info .tri-turn{ font-size:20px; line-height:1; }
+.tri-info .tri-c0{ color:#e8ecf2; } .tri-info .tri-c1{ color:#9aa6bd; } .tri-info .tri-c2{ color:#6f80c4; }
+.tri-actions{ display:flex; gap:8px; }
+#triBoard{ width:min(460px,96vw); height:auto; display:block; touch-action:manipulation; }
+#triBoard polygon[data-tri]{ cursor:pointer; }
+.tri-help{ font-size:12px; color:var(--muted); text-align:center; margin-top:8px; max-width:460px; line-height:1.5; }
 .storm-hud{ display:flex; gap:10px; justify-content:center; align-items:center; margin:0 0 10px; padding:9px 12px;
   border-radius:var(--r-pill); background:linear-gradient(135deg,#ffb347,#ff7a45); color:#2a1500; font-weight:900; font-variant-numeric:tabular-nums; }
 .storm-hud .sh-time.low{ color:#a11; animation:pulseHint 1s ease-in-out infinite; }
