@@ -26,10 +26,18 @@
   --gold-deep:#c99320;
   --good:#4fb877; --good-d:#3a9c63;
   --warn:#e5ad3d; --bad:#ef5a52;
+  /* FIX6: the brand colors most duplicated as inline hex — centralized here (same
+     values, so no visual change) so banners/badges theme from one place. */
+  --c-gold-hi:#ffd968; --c-line-green:#2f7d4d; --c-txt-green:#d7f2e2;
   /* board (kept classic) */
   --light:#ebecd0;
   --dark:#6f9350;
   --radius:16px;
+  /* FIX5: design-token scales (spacing / radius / type) so new work snaps to a
+     rhythm instead of ad-hoc px. Legacy one-offs migrate opportunistically. */
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:22px; --space-6:32px;
+  --r-sm:8px; --r-md:12px; --r-lg:16px; --r-pill:999px;
+  --fs-xs:11px; --fs-sm:12.5px; --fs-base:14px; --fs-md:16px; --fs-lg:19px; --fs-xl:24px;
   --board: min(460px, 92vw);
   --rvboard: min(460px, calc(92vw - 34px));
   --shadow-sm:0 1px 2px rgba(0,0,0,.4);
@@ -80,10 +88,10 @@ header.top h1::before{
   box-shadow:0 4px 12px -3px rgba(47,125,77,.5);
 }
 header.top .sf{ order:1; font-size:12px; color:var(--faint);
-  padding:5px 11px; border:1px solid var(--line); border-radius:999px; background:var(--elevated); }
+  padding:5px 11px; border:1px solid var(--line); border-radius:var(--r-pill); background:var(--elevated); }
 header.top .sf b{ color:var(--good-d); }
 header.top .sf.bad b{ color:var(--bad); }
-.rating-chip{ order:2; padding:6px 13px; border-radius:999px; font-size:13px; font-weight:800;
+.rating-chip{ order:2; padding:6px 13px; border-radius:var(--r-pill); font-size:13px; font-weight:800;
   color:#3a2a00; background:linear-gradient(180deg,#ffd968,var(--gold));
   box-shadow:0 4px 12px -5px rgba(226,160,16,.7); }
 .rating-chip b{ font-size:15px; }
@@ -93,7 +101,7 @@ header.top .sf.bad b{ color:var(--bad); }
   display:inline-grid; place-items:center; }
 .iconbtn:hover{ background:#242b35; }
 .auth-area{ order:4; display:flex; align-items:center; gap:8px; }
-.user-chip{ padding:6px 12px; border-radius:999px; font-size:13px; color:var(--ink);
+.user-chip{ padding:6px 12px; border-radius:var(--r-pill); font-size:13px; color:var(--ink);
   background:var(--elevated); border:1px solid var(--line2); }
 .user-chip b{ color:var(--accent-deep); }
 
@@ -251,7 +259,7 @@ input[type=range]{ accent-color:var(--accent); }
 .graph{ width:100%; height:96px; display:block; cursor:pointer; }
 .summary{ font-size:15px; line-height:1.7; }
 .summary b{ color:var(--ink); }
-.tag{ display:inline-block; padding:3px 11px; border-radius:999px; font-size:12px;
+.tag{ display:inline-block; padding:3px 11px; border-radius:var(--r-pill); font-size:12px;
   font-weight:800; color:#12241a; vertical-align:middle; }
 .aiexplain{ margin-top:12px; padding:12px 14px; border-radius:12px; font-size:15px; line-height:1.65;
   background:linear-gradient(180deg, rgba(63,157,99,.12), rgba(63,157,99,.05));
@@ -330,7 +338,7 @@ input[type=range]{ accent-color:var(--accent); }
 .rv-theme{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin:8px 0 2px; }
 .rv-theme-tag{ font-size:12.5px; color:var(--muted); }
 .rv-theme-tag b{ color:var(--ink); }
-.rv-theme-cta{ padding:5px 11px; border:1px solid var(--accent); border-radius:99px; background:transparent;
+.rv-theme-cta{ padding:5px 11px; border:1px solid var(--accent); border-radius:var(--r-pill); background:transparent;
   color:var(--accent); font-weight:800; font-size:12px; cursor:pointer; }
 .rv-theme-cta:hover{ background:rgba(79,184,119,.14); }
 /* ADD7: opening principles report */
@@ -347,8 +355,8 @@ input[type=range]{ accent-color:var(--accent); }
 #leagueCard .lg-meta{ display:flex; flex-direction:column; }
 #leagueCard .lg-meta b{ font-size:16px; }
 #leagueCard .lg-week{ font-size:12.5px; color:var(--muted); }
-#leagueCard .lg-track{ height:8px; border-radius:99px; background:var(--line); overflow:hidden; margin:0 0 8px; }
-#leagueCard .lg-fill{ height:100%; border-radius:99px; background:linear-gradient(90deg,var(--accent2),var(--accent)); transition:width .5s cubic-bezier(.4,0,.2,1); }
+#leagueCard .lg-track{ height:8px; border-radius:var(--r-pill); background:var(--line); overflow:hidden; margin:0 0 8px; }
+#leagueCard .lg-fill{ height:100%; border-radius:var(--r-pill); background:linear-gradient(90deg,var(--accent2),var(--accent)); transition:width .5s cubic-bezier(.4,0,.2,1); }
 #leagueCard .lg-next{ font-size:12.5px; color:var(--muted); }
 /* FIX10: empty-state cards */
 .my-empty{ text-align:center; padding:26px 18px; }
@@ -389,7 +397,7 @@ input[type=range]{ accent-color:var(--accent); }
 /* ============================================================
    RANK / RESULT BADGES
    ============================================================ */
-.rankbadge{ display:inline-block; margin-bottom:12px; padding:6px 14px; border-radius:999px;
+.rankbadge{ display:inline-block; margin-bottom:12px; padding:6px 14px; border-radius:var(--r-pill);
   font-weight:800; font-size:13px; color:#fff;
   background:linear-gradient(135deg,var(--accent2),var(--accent-deep));
   box-shadow:0 6px 16px -6px rgba(47,125,77,.6); border:1px solid rgba(255,255,255,.15); }
@@ -476,7 +484,8 @@ input[type=range]{ accent-color:var(--accent); }
 .hist-row .dim{ color:var(--faint); }
 .hist-row .w{ color:var(--good-d); } .hist-row .l{ color:var(--bad); } .hist-row .d{ color:var(--muted); }
 .hist-row .up{ color:var(--good-d); font-weight:700; } .hist-row .down{ color:var(--bad); font-weight:700; }
-.hist-empty{ color:var(--muted); font-size:13px; padding:6px 2px; }
+/* FIX9: one shared "nothing here yet" note (history, friends, weakness…) */
+.hist-empty, .weak-empty{ color:var(--muted); font-size:var(--fs-sm); line-height:1.6; padding:var(--space-4) var(--space-2); text-align:center; }
 
 /* leaderboard */
 .lb{ font-size:14px; }
@@ -564,7 +573,7 @@ input[type=range]{ accent-color:var(--accent); }
 .setdesc{ font-size:12.5px; color:var(--muted); line-height:1.5; }
 .switch{ position:relative; flex:0 0 auto; width:50px; height:28px; }
 .switch input{ opacity:0; width:0; height:0; }
-.switch .slider{ position:absolute; inset:0; background:#cfd6df; border-radius:999px; transition:.2s; cursor:pointer; }
+.switch .slider{ position:absolute; inset:0; background:#cfd6df; border-radius:var(--r-pill); transition:.2s; cursor:pointer; }
 .switch .slider::before{ content:""; position:absolute; width:22px; height:22px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s; box-shadow:0 1px 3px rgba(16,24,40,.28); }
 .switch input:checked + .slider{ background:linear-gradient(180deg,var(--accent2),var(--accent)); }
 .switch input:checked + .slider::before{ transform:translateX(22px); }
@@ -595,8 +604,8 @@ input[type=range]{ accent-color:var(--accent); }
   background:rgba(63,157,99,.10); border:1px solid rgba(63,157,99,.28); }
 .goal-presets{ display:flex; flex-wrap:wrap; gap:7px; }
 .goal-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:15px; }
-.goal-bar{ height:12px; border-radius:999px; background:#242b35; border:1px solid var(--line2); overflow:hidden; }
-.goal-fill{ height:100%; border-radius:999px; background:linear-gradient(90deg,var(--accent2),var(--accent)); transition:width .4s; }
+.goal-bar{ height:12px; border-radius:var(--r-pill); background:#242b35; border:1px solid var(--line2); overflow:hidden; }
+.goal-fill{ height:100%; border-radius:var(--r-pill); background:linear-gradient(90deg,var(--accent2),var(--accent)); transition:width .4s; }
 .goal-fill.done{ background:linear-gradient(90deg,#ffd45a,var(--gold-deep)); }
 
 /* ============================================================
@@ -632,7 +641,7 @@ body.ingame{ padding-bottom:0 !important; }
   .bottomnav button.active .bl{ color:var(--accent); }
   .bottomnav button.active::before{ content:""; position:absolute; top:0; left:50%; transform:translateX(-50%);
     width:26px; height:3px; border-radius:0 0 3px 3px; background:var(--accent); }
-  .bottomnav button.active .bi{ background:rgba(79,184,119,.15); border-radius:999px; padding:3px 12px; }
+  .bottomnav button.active .bi{ background:rgba(79,184,119,.15); border-radius:var(--r-pill); padding:3px 12px; }
 }
 @media (max-width:560px){
   /* FIX10: puzzle controls form a stable even grid instead of a ragged wrap */
@@ -671,7 +680,7 @@ body.ingame{ padding-bottom:0 !important; }
    player bars (opponent nickname + rating on top). Everything else
    — header, nav, hero, side cards, footer — is hidden.
    ============================================================ */
-.pv-rating{ font-size:12.5px; font-weight:700; color:var(--muted); padding:2px 8px; border-radius:999px;
+.pv-rating{ font-size:12.5px; font-weight:700; color:var(--muted); padding:2px 8px; border-radius:var(--r-pill);
   background:var(--elevated); border:1px solid var(--line); white-space:nowrap; flex:0 0 auto; }
 .pv-rating .tier{ margin-right:2px; }
 .pv-turn{ margin-left:auto; width:12px; height:12px; border-radius:50%; background:var(--line2); flex:0 0 auto; }
@@ -881,7 +890,7 @@ body.ingame .resultgate{ bottom:24px; }
 .strength-val{ font-size:16.5px; font-weight:800; color:var(--accent-deep);
   letter-spacing:-.2px; margin:0 0 11px; line-height:1.2; transition:opacity .15s; }
 .strength-pick input[type=range]{ -webkit-appearance:none; appearance:none; width:100%;
-  height:6px; border-radius:999px; background:#1a2a20; outline:none; margin:0; padding:0; cursor:pointer; }
+  height:6px; border-radius:var(--r-pill); background:#1a2a20; outline:none; margin:0; padding:0; cursor:pointer; }
 .strength-pick input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none;
   width:22px; height:22px; border-radius:50%; border:2px solid #fff; cursor:pointer;
   background:linear-gradient(180deg,var(--accent2),var(--accent));
@@ -889,7 +898,7 @@ body.ingame .resultgate{ bottom:24px; }
 .strength-pick input[type=range]::-moz-range-thumb{ width:20px; height:20px; border-radius:50%;
   border:2px solid #fff; cursor:pointer; background:linear-gradient(180deg,var(--accent2),var(--accent));
   box-shadow:0 2px 7px -1px rgba(47,125,77,.65); }
-.strength-pick input[type=range]::-moz-range-track{ height:6px; border-radius:999px; background:#1a2a20; }
+.strength-pick input[type=range]::-moz-range-track{ height:6px; border-radius:var(--r-pill); background:#1a2a20; }
 .strength-pick input[type=range]:disabled{ cursor:not-allowed; }
 .strength-pick input[type=range]:disabled::-webkit-slider-thumb{ background:#3a434f; box-shadow:none; }
 .strength-pick input[type=range]:disabled::-moz-range-thumb{ background:#3a434f; box-shadow:none; }
@@ -1026,7 +1035,7 @@ body.ingame .movenav{
 
 /* in-game controls → a cohesive centered pill bar right under the board */
 .cols > div:first-child > .controls{ justify-content:center; gap:8px; margin-top:14px; flex-wrap:wrap; }
-.cols > div:first-child > .controls .ghost{ border-radius:999px; padding:9px 15px; }
+.cols > div:first-child > .controls .ghost{ border-radius:var(--r-pill); padding:9px 15px; }
 
 /* ============================================================
    SETUP PANELS REFINED (v-sp) — the AI "새 대국 설정" + online
@@ -1349,7 +1358,7 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 .cal-cell.frozen{ background:rgba(120,180,240,.22); color:#bcdcff; font-weight:800; }
 /* streak milestone chips + next-target hint */
 .pzd-miles{ margin-left:8px; }
-.pzd-badge{ display:inline-block; margin-left:4px; padding:1px 7px; border-radius:999px;
+.pzd-badge{ display:inline-block; margin-left:4px; padding:1px 7px; border-radius:var(--r-pill);
   background:rgba(233,178,58,.18); color:#f5c451; font-size:11.5px; font-weight:800; }
 .pzd-next{ margin-left:6px; color:var(--muted); font-weight:600; font-size:11.5px; }
 
@@ -1380,7 +1389,7 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 .hub-resume .ht-go{ flex:0 0 auto; font-size:18px; color:var(--muted); }
 /* ADD7: cold-start warming banner — fixed, non-blocking, above the bottom nav */
 .warm-banner{ position:fixed; left:50%; transform:translateX(-50%); bottom:80px; z-index:60;
-  max-width:calc(100vw - 24px); padding:9px 15px; border-radius:999px; font-size:12.5px; font-weight:600;
+  max-width:calc(100vw - 24px); padding:9px 15px; border-radius:var(--r-pill); font-size:12.5px; font-weight:600;
   background:rgba(20,26,20,.96); color:#d7f2e2; border:1px solid #2f7d4d; box-shadow:0 10px 28px -10px rgba(0,0,0,.7);
   text-align:center; line-height:1.4; }
 .warm-banner.hidden{ display:none; }
@@ -1391,9 +1400,9 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 .hub-xp:empty{ display:none; }
 .hub-xp .xp-row{ display:flex; align-items:center; gap:10px; }
 .hub-xp .xp-lv{ flex:0 0 auto; font-weight:900; font-size:13px; color:var(--accent);
-  background:rgba(79,184,119,.14); border-radius:999px; padding:3px 11px; }
-.hub-xp .xp-bar{ flex:1; height:9px; background:var(--panel2); border:1px solid var(--line); border-radius:999px; overflow:hidden; }
-.hub-xp .xp-fill{ height:100%; background:linear-gradient(90deg,#4fb877,#7fd6a3); border-radius:999px; transition:width .4s ease; }
+  background:rgba(79,184,119,.14); border-radius:var(--r-pill); padding:3px 11px; }
+.hub-xp .xp-bar{ flex:1; height:9px; background:var(--panel2); border:1px solid var(--line); border-radius:var(--r-pill); overflow:hidden; }
+.hub-xp .xp-fill{ height:100%; background:linear-gradient(90deg,#4fb877,#7fd6a3); border-radius:var(--r-pill); transition:width .4s ease; }
 .hub-xp .xp-num{ flex:0 0 auto; font-size:11.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
 
 /* ---- daily quests (v-quest) ---- */
@@ -1402,8 +1411,8 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 .hub-quests .hq-head{ display:flex; align-items:center; justify-content:space-between; font-size:13px; margin-bottom:8px; }
 .hub-quests .hq-done{ color:var(--accent); font-weight:800; font-size:12px; }
 .hub-quests .hq-count{ color:var(--faint); font-weight:800; font-size:12px; font-variant-numeric:tabular-nums; }
-.hub-quests .hq-track{ height:6px; border-radius:99px; background:var(--line); overflow:hidden; margin:0 0 10px; }
-.hub-quests .hq-track-fill{ height:100%; border-radius:99px; background:linear-gradient(90deg,var(--accent2),var(--accent)); transition:width .45s cubic-bezier(.4,0,.2,1); }
+.hub-quests .hq-track{ height:6px; border-radius:var(--r-pill); background:var(--line); overflow:hidden; margin:0 0 10px; }
+.hub-quests .hq-track-fill{ height:100%; border-radius:var(--r-pill); background:linear-gradient(90deg,var(--accent2),var(--accent)); transition:width .45s cubic-bezier(.4,0,.2,1); }
 .hub-quests .hq-alldone{ font-size:12.5px; font-weight:800; color:var(--accent); margin:0 0 8px; }
 .hub-quests .hq-list{ display:flex; flex-direction:column; gap:6px; }
 .hub-quests .hq-item{ display:flex; align-items:center; gap:9px; font-size:13px; color:var(--muted); }
@@ -1414,7 +1423,7 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 .hub-quests .hq-item.ok .hq-prog{ color:var(--accent); }
 
 /* ---- weakness report (v-weak) ---- */
-.weak-empty{ font-size:13px; color:var(--muted); line-height:1.5; }
+/* .weak-empty shares the .hist-empty note style (defined once above) */
 .weak-head{ font-size:13px; margin-bottom:8px; color:var(--muted); }
 .weak-list{ display:flex; flex-direction:column; gap:8px; }
 .weak-row{ display:flex; align-items:center; gap:10px; }
