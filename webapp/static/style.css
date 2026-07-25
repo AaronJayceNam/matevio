@@ -1313,6 +1313,10 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 .hub-quests:empty{ display:none; }
 .hub-quests .hq-head{ display:flex; align-items:center; justify-content:space-between; font-size:13px; margin-bottom:8px; }
 .hub-quests .hq-done{ color:var(--accent); font-weight:800; font-size:12px; }
+.hub-quests .hq-count{ color:var(--faint); font-weight:800; font-size:12px; font-variant-numeric:tabular-nums; }
+.hub-quests .hq-track{ height:6px; border-radius:99px; background:var(--line); overflow:hidden; margin:0 0 10px; }
+.hub-quests .hq-track-fill{ height:100%; border-radius:99px; background:linear-gradient(90deg,var(--accent2),var(--accent)); transition:width .45s cubic-bezier(.4,0,.2,1); }
+.hub-quests .hq-alldone{ font-size:12.5px; font-weight:800; color:var(--accent); margin:0 0 8px; }
 .hub-quests .hq-list{ display:flex; flex-direction:column; gap:6px; }
 .hub-quests .hq-item{ display:flex; align-items:center; gap:9px; font-size:13px; color:var(--muted); }
 .hub-quests .hq-item.ok{ color:var(--ink); }

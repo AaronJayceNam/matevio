@@ -1329,6 +1329,7 @@ function aiEndGame() {
   else if (r === "0-1") kind = AIG.human === "b" ? "win" : "loss";
   if (typeof questBump === "function") questBump("aiGames");   // daily quest progress
   if (kind === "win" && typeof suggestSaveProgress === "function") suggestSaveProgress();   // guests: save nudge
+  if (kind === "win" && typeof maybeFirstSuccessSoftAsk === "function") setTimeout(maybeFirstSuccessSoftAsk, 1400);   // ADD5
 
   // Beating this level grants its title (if it's a new personal best).
   const T = (typeof t === "function") ? t : ((k) => k);
@@ -1834,6 +1835,7 @@ async function loadPuzzle(idx, opts) {
   if (idx < 0 || idx >= PZ.list.length) return;
   PZ.idx = idx; PZ.cat = pzCatOf(idx);
   PZ.fails = 0;                     // reset wrong-attempt counter (auto-hint after 3)
+  PZ.beginner = !!(opts && opts.beginner);   // rules-beginner first success → hint after 1 miss
   document.querySelectorAll("#pzCats button").forEach((b) =>
     b.classList.toggle("active", +b.dataset.cat === PZ.cat));
   const p = PZ.list[idx];
@@ -1933,7 +1935,7 @@ async function pzUserMove(uci) {
     PZ.fen = prevFen; PZ.lastUci = prevLast;
     PZ.busy = false; renderPzBoard();
     PZ.fails = (PZ.fails || 0) + 1;
-    if (PZ.fails >= 3) { pzShowHint(); setStatus("pzFeedback", t("pz_autohint"), false); }  // struggling → auto hint
+    if (PZ.fails >= (PZ.beginner ? 1 : 3)) { pzShowHint(); setStatus("pzFeedback", t("pz_autohint"), false); }  // struggling → auto hint
     return;
   }
   // show the user's move
@@ -1985,7 +1987,7 @@ async function pzUserMoveLine(uci) {
     await sleep(760);
     PZ.fen = prevFen; PZ.lastUci = prevLast; PZ.busy = false; renderPzBoard();
     PZ.fails = (PZ.fails || 0) + 1;
-    if (PZ.fails >= 3) { pzShowHint(); setStatus("pzFeedback", t("pz_autohint"), false); }
+    if (PZ.fails >= (PZ.beginner ? 1 : 3)) { pzShowHint(); setStatus("pzFeedback", t("pz_autohint"), false); }
     return;
   }
   // correct — show the player's move
@@ -2028,6 +2030,10 @@ function pzSolved() {
   if (typeof questBump === "function") questBump("puzzles");        // daily quest progress
   if (typeof xpAdd === "function") xpAdd(5);                        // learning XP (first solve only)
   if (typeof suggestSaveProgress === "function") suggestSaveProgress();   // guests: gentle save nudge
+  // ADD5: first product success → soft-ask to install / enable notifications
+  if (typeof maybeFirstSuccessSoftAsk === "function") setTimeout(maybeFirstSuccessSoftAsk, 1200);
+  // refresh visit/streak state for the conditional daily reminder
+  if (typeof stampVisitState === "function") stampVisitState();
   // if this was today's daily puzzle, log it for the streak + calendar
   const wasDaily = (typeof dailyIndex === "function" && PZ.idx === dailyIndex() && !isDailySolved());
   if (wasDaily) { markDailySolved(); if (typeof xpAdd === "function") xpAdd(15); }   // daily bonus XP
@@ -4348,12 +4354,17 @@ function pickToday() {
   const brandNew = (!hist0 || hist0.length === 0) && solvedN === 0;
   if (brandNew && PZ && PZ.list && PZ.list.length) {
     const skill = localStorage.getItem("cc_skill") || "";
-    if (skill === "new") {   // doesn't know the rules yet → learn first
-      return { ic: "📖", label: T("today_learn"), sub: T("today_learn_s"), go: () => switchTab("learn") };
-    }
     // easiest theme = "hanging piece" (cat 5); force past the sequential lock
     let easy = 0;
     try { easy = pzCatRange(5).start; } catch (e) { easy = 0; }
+    if (skill === "new") {
+      // Even a rules-beginner needs a first SUCCESS, not just reading. Give the
+      // single easiest puzzle (one free capture) with the built-in auto-hint as a
+      // safety net, and flag it so loadPuzzle offers the hint early. Lessons stay
+      // one tap away in the nav for anyone who wants the rules first.
+      return { ic: "🧩", label: T("today_first"), sub: T("today_first_new_s"),
+        go: () => { switchTab("puzzle"); loadPuzzle(easy, { force: true, beginner: true }); } };
+    }
     return { ic: "🧩", label: T("today_first"), sub: T("today_first_s"),
       go: () => { switchTab("puzzle"); loadPuzzle(easy, { force: true }); } };
   }
@@ -4414,10 +4425,15 @@ function questBump(kind) {
 function renderQuests() {
   const el = document.getElementById("hubQuests"); if (!el) return;
   const q = questsToday();
-  const allDone = QUEST_DEFS.every((d) => (q[d.k] || 0) >= d.goal);
+  const doneN = QUEST_DEFS.filter((d) => (q[d.k] || 0) >= d.goal).length;
+  const allDone = doneN >= QUEST_DEFS.length;
+  const pct = Math.round(doneN / QUEST_DEFS.length * 100);
   el.innerHTML =
     '<div class="hq-head"><b>' + t("quest_title") + "</b>" +
-      (allDone ? '<span class="hq-done">✓ ' + t("quest_all") + "</span>" : "") + "</div>" +
+      '<span class="hq-count">' + doneN + "/" + QUEST_DEFS.length +
+      (allDone ? " ✓" : "") + "</span></div>" +
+    '<div class="hq-track"><div class="hq-track-fill" style="width:' + pct + '%"></div></div>' +
+    (allDone ? '<div class="hq-alldone">🎉 ' + t("quest_all") + "</div>" : "") +
     '<div class="hq-list">' + QUEST_DEFS.map((d) => {
       const n = Math.min(q[d.k] || 0, d.goal), ok = n >= d.goal;
       return '<div class="hq-item' + (ok ? " ok" : "") + '"><span class="hq-ic">' + (ok ? "✅" : d.ic) + "</span>" +
@@ -4534,3 +4550,65 @@ function renderHome() {
 }
 try { renderHome(); } catch (e) {}
 try { renderAiLevels(); } catch (e) {}
+
+// ---- FIX4: conditional daily reminder. Stamp today's visit + current streak so
+// the service worker can SKIP the notification on days the user already opened
+// the app, and word it around the streak they'd lose. Written on every load. ----
+async function stampVisitState() {
+  try {
+    const c = await caches.open("matevio-msg");
+    const streak = (typeof dailyStreakCount === "function") ? dailyStreakCount() : 0;
+    const dailyDone = (typeof isDailySolved === "function") ? !!isDailySolved() : false;
+    await c.put("/__reminder_state", new Response(JSON.stringify({
+      date: (typeof dateStr === "function") ? dateStr() : "",
+      streak, dailyDone,
+      title: (typeof t === "function") ? t("notif_title") : "",
+      body: (typeof t === "function") ? t("notif_body") : "",
+      body_streak: (typeof t === "function") ? t("notif_body_streak") : "",
+    }), { headers: { "Content-Type": "application/json" } }));
+  } catch (e) {}
+}
+try { stampVisitState(); } catch (e) {}
+
+// ---- ADD5: install + notification soft-ask, surfaced ONCE right after the
+// user's first success (a puzzle solve or an AI win) — the moment they've felt
+// the product work, not on cold load. Non-blocking bottom card. ----
+function maybeFirstSuccessSoftAsk() {
+  try {
+    if (localStorage.getItem("cc_softask") === "1") return;
+    // don't stack on top of the guest save-progress banner
+    const sb = document.getElementById("saveBanner");
+    if (sb && !sb.classList.contains("hidden")) return;
+    const standalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+    const canInstall = !standalone && !!window.__pwaDeferred;
+    const canNotify = ("Notification" in window) && Notification.permission === "default";
+    if (!canInstall && !canNotify) return;   // nothing useful to ask → skip (and don't burn the one-shot)
+    localStorage.setItem("cc_softask", "1");
+    const card = document.getElementById("softAsk"); if (!card) return;
+    const iBtn = document.getElementById("softAskInstall");
+    const nBtn = document.getElementById("softAskNotify");
+    if (iBtn) iBtn.style.display = canInstall ? "" : "none";
+    if (nBtn) nBtn.style.display = canNotify ? "" : "none";
+    card.classList.remove("hidden");
+  } catch (e) {}
+}
+(function wireSoftAsk() {
+  const card = document.getElementById("softAsk"); if (!card) return;
+  const close = () => card.classList.add("hidden");
+  const x = document.getElementById("softAskClose");
+  const later = document.getElementById("softAskLater");
+  const iBtn = document.getElementById("softAskInstall");
+  const nBtn = document.getElementById("softAskNotify");
+  if (x) x.onclick = close;
+  if (later) later.onclick = close;
+  if (iBtn) iBtn.onclick = async () => {
+    close();
+    if (window.__pwaPrompt) { try { await window.__pwaPrompt(); } catch (e) {} }
+  };
+  if (nBtn) nBtn.onclick = async () => {
+    close();
+    const tog = document.getElementById("setRemind");
+    if (tog) tog.checked = true;
+    if (typeof setReminder === "function") { try { await setReminder(true); } catch (e) {} }
+  };
+})();

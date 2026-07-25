@@ -18,7 +18,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=110">
+<link rel="stylesheet" href="/static/style.css?v=111">
 </head>
 <body>
 
@@ -42,6 +42,15 @@
   <span data-i18n="save_banner">🎉 잘했어요! 가입하면 스트릭·진행이 저장돼요.</span>
   <button id="saveBannerBtn" data-i18n="save_banner_btn" style="border:none;background:linear-gradient(180deg,#4bb277,#2f7d4d);color:#fff;font-weight:700;border-radius:8px;padding:5px 12px;font-size:12.5px;cursor:pointer">저장하기</button>
   <button id="saveBannerClose" aria-label="닫기" data-i18n-aria="tt_close" style="border:none;background:transparent;font-size:17px;line-height:1;cursor:pointer;color:#d7f2e2">×</button>
+</div>
+
+<!-- ADD5: install + notification soft-ask, shown once right after a first success -->
+<div id="softAsk" class="hidden" style="align-items:center;justify-content:center;gap:9px;flex-wrap:wrap;padding:9px 12px;background:#111a14;color:#d7f2e2;font-size:12.5px;border-bottom:1px solid #1e5236">
+  <span data-i18n="softask_msg">🔔 홈 화면에 추가하고 매일 퍼즐 알림으로 스트릭을 지켜요</span>
+  <button id="softAskInstall" data-i18n="softask_install" style="border:none;background:linear-gradient(180deg,var(--accent2),var(--accent));color:#fff;font-weight:800;border-radius:8px;padding:5px 12px;font-size:12.5px;cursor:pointer">📲 설치</button>
+  <button id="softAskNotify" data-i18n="softask_notify" style="border:1px solid #2f7d4d;background:transparent;color:#d7f2e2;font-weight:700;border-radius:8px;padding:5px 12px;font-size:12.5px;cursor:pointer">🔔 알림 켜기</button>
+  <button id="softAskLater" data-i18n="softask_later" style="border:none;background:transparent;color:#9fc4ae;font-size:12px;cursor:pointer">나중에</button>
+  <button id="softAskClose" aria-label="닫기" data-i18n-aria="tt_close" style="border:none;background:transparent;font-size:17px;line-height:1;cursor:pointer;color:#d7f2e2">×</button>
 </div>
 
 <header class="top">
@@ -761,8 +770,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=110"></script>
-<script src="/static/app.js?v=110"></script>
+<script src="/static/i18n.js?v=111"></script>
+<script src="/static/app.js?v=111"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {
@@ -802,9 +811,17 @@
     var deferred = null;
     var btn = document.getElementById("installBtn");
     var installed = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+    // expose the captured prompt so app.js can offer install at the right moment
+    // (e.g. right after the user's first success — see maybeFirstSuccessSoftAsk).
+    window.__pwaPrompt = function () {
+      if (!deferred) return Promise.resolve(false);
+      deferred.prompt();
+      return deferred.userChoice.finally(function () { deferred = null; window.__pwaDeferred = null; if (btn) btn.classList.add("hidden"); });
+    };
     window.addEventListener("beforeinstallprompt", function (e) {
       e.preventDefault();
       deferred = e;
+      window.__pwaDeferred = e;
       if (btn && !installed) btn.classList.remove("hidden");
     });
     if (btn) btn.addEventListener("click", function () {
@@ -816,7 +833,7 @@
       deferred.userChoice.finally(function () { deferred = null; btn.classList.add("hidden"); });
     });
     window.addEventListener("appinstalled", function () {
-      deferred = null; if (btn) btn.classList.add("hidden");
+      deferred = null; window.__pwaDeferred = null; if (btn) btn.classList.add("hidden");
     });
   })();
   // In-app browsers (KakaoTalk / Naver app / Instagram / Facebook / Line …) block

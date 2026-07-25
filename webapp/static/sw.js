@@ -2,7 +2,7 @@
    updates instant. The API and WebSocket always go straight to the network;
    the HTML is network-first (so a new deploy's ?v= assets load immediately),
    and versioned static assets are cache-first. Bump CACHE to purge old caches. */
-const CACHE = "matevio-v41";
+const CACHE = "matevio-v42";
 const MSG_CACHE = "matevio-msg";   // holds the localized reminder text (never purged)
 const SHELL = [
   "/",
@@ -32,12 +32,28 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("periodicsync", (e) => {
   if (e.tag === "daily-reminder") e.waitUntil(showDailyReminder());
 });
+function _todayStr() {
+  // local calendar date YYYY-MM-DD (matches the app's dateStr())
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
 async function showDailyReminder() {
   let title = "오늘의 퍼즐 🔥", body = "스트릭을 지키세요 — 오늘의 퍼즐이 기다려요!";
   try {
     const r = await caches.open(MSG_CACHE).then((c) => c.match("/__reminder"));
     if (r) { const j = await r.json(); title = j.title || title; body = j.body || body; }
   } catch (e2) {}
+  // FIX4: conditional — skip on days the user already opened the app or already
+  // solved today's daily; word it around the streak they'd actually lose.
+  try {
+    const s = await caches.open(MSG_CACHE).then((c) => c.match("/__reminder_state"));
+    if (s) {
+      const j = await s.json();
+      if (j.date === _todayStr() && j.dailyDone) return;   // already done today → don't nag
+      if (j.streak >= 2 && j.body_streak) body = j.body_streak.replace("{n}", j.streak);
+      if (j.title) title = j.title;
+    }
+  } catch (e3) {}
   return self.registration.showNotification(title, {
     body, tag: "daily-reminder", icon: "/static/icons/icon-192.png", badge: "/static/icons/icon-192.png",
   });
