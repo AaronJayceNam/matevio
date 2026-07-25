@@ -730,6 +730,9 @@ register_corr(app)
 # 3-player Trident chess engine endpoints (hotseat)
 from webapp.trident import register_trident  # noqa: E402
 register_trident(app)
+# 3-player Trident online lobby (WebSocket /ws3)
+from webapp.trident_online import register_trident_online  # noqa: E402
+register_trident_online(app)
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 

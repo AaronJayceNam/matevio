@@ -2399,7 +2399,8 @@ function closeCorrGame() { const m = document.getElementById("corrGameModal"); i
 // game via the server engine (/api/trident/*). Also the board UI the online 3P
 // lobby will reuse.
 // =========================================================================== //
-const TRI = { board: null, turn: 0, moves: [], over: false, winner: null, sel: null, last: null, busy: false };
+const TRI = { board: null, turn: 0, moves: [], over: false, winner: null, sel: null, last: null, busy: false,
+  online: false, myseat: null, names: null, ws: null };
 const TRI_GLYPH = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
 const TRI_PIECE_FILL = ["#f4f5f7", "#8f9bb3", "#20242c"];     // white / grey / black armies
 const TRI_PIECE_STROKE = ["#2a2f38", "#20242c", "#c9d2df"];
@@ -2421,6 +2422,7 @@ function triCellPoly(i, G) {
 function triCellCenter(i, G) { const p = triCellPoly(i, G); return [(p[0][0] + p[2][0]) / 2, (p[0][1] + p[2][1]) / 2]; }
 
 async function triNew() {
+  if (TRI.online) return;   // online games are server-driven; "new" doesn't apply
   TRI.sel = null; TRI.last = null; TRI.busy = true;
   try { const r = await api("/api/trident/new"); Object.assign(TRI, { board: r.board, turn: r.turn, moves: r.moves, over: r.over, winner: r.winner }); }
   catch (e) { TRI.busy = false; return; }
@@ -2432,22 +2434,70 @@ function triOpen() {
   const m = document.getElementById("triGame"); if (m) m.classList.remove("hidden");
   if (!TRI.board) triNew(); else triRender();
 }
-function triClose() { const m = document.getElementById("triGame"); if (m) m.classList.add("hidden"); }
+function triClose() {
+  const m = document.getElementById("triGame"); if (m) m.classList.add("hidden");
+  if (TRI.ws) { try { TRI.ws.close(); } catch (e) {} TRI.ws = null; }
+  TRI.online = false; TRI.myseat = null;
+}
+// ---- online 3-player: connect to the /ws3 lobby, then relay through the server ----
+function triOnlineOpen() {
+  const m = document.getElementById("triGame"); if (m) m.classList.remove("hidden");
+  Object.assign(TRI, { online: true, myseat: null, board: null, over: false, winner: null, sel: null, last: null, busy: false, names: null });
+  triSetStatus((typeof t === "function" ? t("tri_connecting") : "연결 중…"));
+  let ws; try { ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws3"); }
+  catch (e) { triSetStatus((typeof t === "function" ? t("tri_conn_fail") : "연결 실패")); return; }
+  TRI.ws = ws;
+  ws.onopen = () => { try { ws.send(JSON.stringify({ type: "quick", name: (AUTH && AUTH.id) || "플레이어" })); } catch (e) {} };
+  ws.onmessage = (ev) => { let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; } triOnMsg(msg); };
+  ws.onclose = () => { if (TRI.online && !TRI.over && TRI.myseat == null) triSetStatus((typeof t === "function" ? t("tri_conn_fail") : "연결 끊김")); };
+  if (typeof metric === "function") metric("trident_online");
+}
+function triSetStatus(html) { const info = document.getElementById("triInfo"); if (info) info.innerHTML = html; }
+function triApplyState(st, last) {
+  Object.assign(TRI, { board: st.board, turn: st.turn, moves: st.moves || [], over: !!st.over, winner: st.winner, last: last || null, sel: null, busy: false });
+  triRender();
+}
+function triOnMsg(msg) {
+  const T = (typeof t === "function") ? t : ((k) => k);
+  if (msg.type === "waiting") {
+    triSetStatus("⏳ " + T("tri_waiting").replace("{have}", msg.have || 1).replace("{need}", msg.need || 3));
+  } else if (msg.type === "start") {
+    TRI.myseat = msg.seat; TRI.names = msg.names || null;
+    triApplyState(msg.state);
+  } else if (msg.type === "state") {
+    triApplyState(msg.state, msg.last);
+  } else if (msg.type === "end") {
+    triApplyState(msg.state); TRI.over = true; TRI.winner = msg.winner; triRender();
+  } else if (msg.type === "aborted") {
+    TRI.over = true; triSetStatus("⚠️ " + T("tri_aborted"));
+  } else if (msg.type === "error") {
+    TRI.busy = false; triRender();   // rejected move — unlock and let the player retry
+  }
+}
 function triLegalTargets() {
   if (TRI.sel == null) return [];
   return TRI.moves.filter((m) => m[0] === TRI.sel).map((m) => m[1]);
 }
 function triClick(i) {
   if (TRI.busy || TRI.over) return;
+  // online: you may only touch your own army, and only when it's your turn
+  const mover = TRI.online ? TRI.myseat : TRI.turn;
+  if (TRI.online && (TRI.myseat == null || TRI.turn !== TRI.myseat)) return;
   const occ = TRI.board[i];
   if (TRI.sel != null) {
     if (triLegalTargets().includes(i)) return triMove(TRI.sel, i);
-    if (occ && occ[0] === TRI.turn) { TRI.sel = i; return triRender(); }
+    if (occ && occ[0] === mover) { TRI.sel = i; return triRender(); }
     TRI.sel = null; return triRender();
   }
-  if (occ && occ[0] === TRI.turn) { TRI.sel = i; triRender(); }
+  if (occ && occ[0] === mover) { TRI.sel = i; triRender(); }
 }
 async function triMove(frm, to) {
+  if (TRI.online) {
+    // optimistic: lock input, let the server broadcast the authoritative state back
+    TRI.sel = null; TRI.busy = true;
+    try { TRI.ws.send(JSON.stringify({ type: "move", frm, to })); } catch (e) {}
+    return;
+  }
   TRI.busy = true; TRI.sel = null;
   let r; try { r = await api("/api/trident/move", { board: TRI.board, turn: TRI.turn, frm, to }); } catch (e) { TRI.busy = false; return; }
   TRI.busy = false;
@@ -2497,8 +2547,19 @@ function triRender() {
   svg.querySelectorAll("[data-tri]").forEach((el) => { el.onclick = () => triClick(+el.dataset.tri); });
   const info = document.getElementById("triInfo");
   if (info) {
-    if (TRI.over) info.innerHTML = "🏆 " + T("tri_win").replace("{who}", T("tri_c" + TRI.winner));
-    else info.innerHTML = '<span class="tri-turn tri-c' + TRI.turn + '">●</span> ' + T("tri_turn").replace("{who}", T("tri_c" + TRI.turn));
+    const who = (sec) => (TRI.online && TRI.names && TRI.names[sec]) ? escapeHtml(TRI.names[sec]) : T("tri_c" + sec);
+    let msg;
+    if (TRI.over) {
+      msg = (TRI.winner == null) ? ("🏳️ " + T("tri_draw"))
+        : ("🏆 " + T("tri_win").replace("{who}", who(TRI.winner)));
+    } else {
+      msg = '<span class="tri-turn tri-c' + TRI.turn + '">●</span> ' + T("tri_turn").replace("{who}", who(TRI.turn));
+      if (TRI.online && TRI.myseat != null) {
+        msg += ' · <span class="tri-c' + TRI.myseat + '">' +
+          T((TRI.turn === TRI.myseat) ? "tri_your_move" : "tri_seat_wait").replace("{who}", who(TRI.myseat)) + "</span>";
+      }
+    }
+    info.innerHTML = msg;
   }
 }
 function renderCorrBoard() {
@@ -3394,7 +3455,8 @@ if ($("bossClose")) $("bossClose").onclick = () => closeBossModal();
 document.querySelectorAll("[data-odds]").forEach((b) => { b.onclick = () => startOdds(b.dataset.odds); });   // MODE4
 if ($("endgameBtn")) $("endgameBtn").onclick = () => openEndgameModal();   // MODE7
 if ($("egClose")) $("egClose").onclick = () => closeEndgameModal();
-if ($("triBtn")) $("triBtn").onclick = () => triOpen();                     // 3-player
+if ($("triBtn")) $("triBtn").onclick = () => triOpen();                     // 3-player hotseat
+if ($("triOnlineBtn")) $("triOnlineBtn").onclick = () => triOnlineOpen();   // 3-player online
 if ($("triNewBtn")) $("triNewBtn").onclick = () => triNew();
 if ($("triCloseBtn")) $("triCloseBtn").onclick = () => triClose();
 if ($("opSaveBtn")) $("opSaveBtn").onclick = () => repSaveCurrentOpening();   // FEAT4
