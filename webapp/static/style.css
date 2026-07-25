@@ -1390,6 +1390,26 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 .hub-resume .ht-txt b{ font-size:15px; font-weight:800; line-height:1.2; }
 .hub-resume .ht-sub{ font-size:12px; color:var(--muted); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .hub-resume .ht-go{ flex:0 0 auto; font-size:18px; color:var(--muted); }
+/* MODE1: Puzzle Storm */
+.pz-storm{ display:block; width:100%; margin:0 0 8px; padding:12px 14px; border:none; border-radius:var(--r-md);
+  background:linear-gradient(135deg,#ffb347,#ff7a45); color:#2a1500; font-weight:800; font-size:14px; cursor:pointer;
+  box-shadow:0 6px 16px -8px #ff7a45; transition:transform .1s ease; min-height:44px; }
+.pz-storm:hover{ transform:translateY(-1px); }
+.storm-hud{ display:flex; gap:10px; justify-content:center; align-items:center; margin:0 0 10px; padding:9px 12px;
+  border-radius:var(--r-pill); background:linear-gradient(135deg,#ffb347,#ff7a45); color:#2a1500; font-weight:900; font-variant-numeric:tabular-nums; }
+.storm-hud .sh-time.low{ color:#a11; animation:pulseHint 1s ease-in-out infinite; }
+.storm-hud .sh-score{ font-size:17px; }
+/* while a Storm run is on, hide the puzzle browse chrome to keep focus on the board */
+body.storm-on #pzDaily, body.storm-on #pzRecommend, body.storm-on #pzStormBtn,
+body.storm-on .pz-rating-line, body.storm-on #pzCats, body.storm-on #pzGrid,
+body.storm-on .controls{ display:none !important; }
+/* MODE3: Survival Ladder + special-modes area */
+.ai-modes{ margin:14px 0 4px; padding:12px 14px; background:var(--panel2); border:1px solid var(--line); border-radius:var(--r-lg); }
+.ai-modes-h{ font-size:var(--fs-sm); font-weight:800; color:var(--muted); margin-bottom:8px; }
+.ai-mode-btn{ display:block; width:100%; text-align:left; padding:12px 14px; margin:0 0 8px; border:1px solid var(--line2);
+  border-radius:var(--r-md); background:var(--panel); color:var(--ink); font-weight:700; font-size:13.5px; cursor:pointer; min-height:44px; transition:.15s; }
+.ai-mode-btn:hover{ border-color:var(--accent); transform:translateY(-1px); }
+.ai-mode-btn:last-child{ margin-bottom:0; }
 /* ADD4: first-run starter checklist on the home hub */
 .hub-starter{ background:var(--panel2); border:1px solid var(--line); border-radius:var(--r-lg); padding:14px 16px; margin:0 0 14px; }
 .hub-starter .st-head{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin-bottom:10px; }

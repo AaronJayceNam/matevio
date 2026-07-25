@@ -1602,6 +1602,8 @@ function aiEndGame() {
   if (kind === "win" && typeof suggestSaveProgress === "function") suggestSaveProgress();   // guests: save nudge
   if (kind === "win" && typeof metric === "function") metric("first_win", { once: true });   // ADD10 funnel
   if (kind === "win" && typeof maybeFirstSuccessSoftAsk === "function") setTimeout(maybeFirstSuccessSoftAsk, 1400);   // ADD5
+  // MODE3 서바이벌 래더: a win climbs to the next level; any non-win ends the run.
+  if (typeof LADDER !== "undefined" && LADDER.active) { return ladderEndGame(kind); }
 
   // Beating this level grants its title (if it's a new personal best).
   const T = (typeof t === "function") ? t : ((k) => k);
@@ -1948,6 +1950,115 @@ function pickAdaptivePuzzle() {
 function loadAdaptivePuzzle() { loadPuzzle(pickAdaptivePuzzle(), { force: true }); }
 
 // =========================================================================== //
+// MODE1: PUZZLE STORM (폭풍 퍼즐) — 3-minute client-side puzzle rush over the
+// cached puzzles. Reuses the puzzle board; a solve serves the next + banks a
+// second, a miss ends the run. Only the final score is a candidate for saving.
+// =========================================================================== //
+const STORM = { active: false, score: 0, combo: 0, endTime: 0, timer: null, band: 800 };
+function stormBest() { return +(localStorage.getItem("cc_storm_best") || 0); }
+function startStorm() {
+  if (!PZ.list || !PZ.list.length) return;
+  STORM.active = true; STORM.score = 0; STORM.combo = 0;
+  STORM.band = (typeof pzRatingGet === "function") ? pzRatingGet() : 800;
+  STORM.endTime = Date.now() + 180000;
+  switchTab("puzzle");
+  document.body.classList.add("storm-on");
+  stormServe(); stormRenderHud();
+  clearInterval(STORM.timer);
+  STORM.timer = setInterval(() => {
+    if (!STORM.active) { clearInterval(STORM.timer); return; }
+    if (Date.now() >= STORM.endTime) { stormEnd(); return; }
+    stormRenderHud();
+  }, 250);
+}
+function stormServe() {
+  const band = STORM.band, cands = [];
+  for (let i = 0; i < PZ.list.length; i++) {
+    const r = (typeof PZ.list[i].rating === "number") ? PZ.list[i].rating : band;
+    if (Math.abs(r - band) <= 160) cands.push(i);
+  }
+  const pool = cands.length ? cands : PZ.list.map((_, i) => i);
+  loadPuzzle(pool[Math.floor(Math.random() * pool.length)], { force: true });
+}
+function stormSolved() {
+  STORM.score++; STORM.combo++;
+  STORM.band = Math.min(2000, STORM.band + 12);   // ramp difficulty
+  STORM.endTime += 1000;                           // +1s per solve
+  stormRenderHud(); stormServe();
+}
+function stormEnd() {
+  if (!STORM.active) return;
+  STORM.active = false; clearInterval(STORM.timer);
+  document.body.classList.remove("storm-on");
+  const hud = document.getElementById("stormHud"); if (hud) hud.hidden = true;
+  const best = stormBest(), isBest = STORM.score > best;
+  if (isBest) localStorage.setItem("cc_storm_best", String(STORM.score));
+  if (typeof xpAdd === "function") xpAdd(Math.min(30, STORM.score * 2));
+  if (typeof metric === "function") metric("storm_run");
+  const T = (typeof t === "function") ? t : ((k) => k);
+  showResult({
+    kind: "win", icon: "⚡",
+    title: T("storm_over").replace("{n}", STORM.score),
+    sub: isBest ? T("storm_best_new") : T("storm_best").replace("{n}", best),
+    actions: [
+      { label: T("storm_again"), primary: true, onClick: () => { hideResult(); startStorm(); } },
+      { label: T("card_share"), onClick: () => { if (typeof shareResultCard === "function") shareResultCard({ icon: "⚡", title: T("storm_card").replace("{n}", STORM.score), sub: "Puzzle Storm" }); } },
+      { label: T("pz_theme_list_btn"), onClick: () => { hideResult(); renderPzGrid(); } },
+    ],
+  });
+}
+function stormRenderHud() {
+  const el = document.getElementById("stormHud"); if (!el) return;
+  const left = Math.max(0, Math.ceil((STORM.endTime - Date.now()) / 1000));
+  el.innerHTML = '<span class="sh-time' + (left <= 15 ? " low" : "") + '">⏱ ' + left + 's</span>' +
+    '<span class="sh-score">⚡ ' + STORM.score + '</span>' +
+    '<span class="sh-combo">🔥 x' + STORM.combo + '</span>';
+  el.hidden = false;
+}
+
+// =========================================================================== //
+// MODE3: SURVIVAL LADDER (서바이벌 래더) — one life; climb AI levels 1→15. First
+// loss ends the run at the level you reached. Reuses the AI game flow.
+// =========================================================================== //
+const LADDER = { active: false, level: 1 };
+function ladderBest() { return +(localStorage.getItem("cc_ladder_best") || 0); }
+function startLadder() { LADDER.active = true; LADDER.level = 1; ladderPlay(); }
+function ladderPlay() {
+  const sel = $("aiLevel"); if (sel) sel.value = String(LADDER.level);
+  const style = $("aiStyle"); if (style) style.value = "default";
+  const c960 = $("ai960"); if (c960) c960.checked = false;
+  const col = $("aiColor"); if (col) col.value = "w";
+  switchTab("ai");
+  if (typeof aiStart === "function") aiStart();
+  if (typeof shareFlash === "function") setTimeout(() => shareFlash(t("ladder_level").replace("{n}", LADDER.level)), 400);
+}
+function ladderEndGame(kind) {
+  const T = (typeof t === "function") ? t : ((k) => k);
+  if (kind === "win" && LADDER.level < 15) {
+    // cleared this rung → auto-advance to the next after a short beat
+    const next = LADDER.level + 1;
+    showResult({ kind: "win", icon: "🪜", title: T("ladder_cleared").replace("{n}", LADDER.level),
+      sub: T("ladder_next").replace("{n}", next),
+      actions: [{ label: T("ladder_go").replace("{n}", next), primary: true, onClick: () => { hideResult(); LADDER.level = next; ladderPlay(); } },
+                { label: T("exit_btn"), onClick: () => { LADDER.active = false; exitImmersive(); } }] });
+    return;
+  }
+  // loss, draw, or beat the top → run ends
+  LADDER.active = false;
+  const reached = (kind === "win") ? 15 : Math.max(0, LADDER.level - 1);
+  const best = ladderBest(), isBest = reached > best;
+  if (isBest) localStorage.setItem("cc_ladder_best", String(reached));
+  if (typeof xpAdd === "function") xpAdd(Math.min(30, reached * 3));
+  if (typeof metric === "function") metric("ladder_run");
+  showResult({ kind: reached > 0 ? "win" : "loss", icon: "🪜",
+    title: T("ladder_over").replace("{n}", reached),
+    sub: isBest ? T("storm_best_new") : T("ladder_best").replace("{n}", best),
+    actions: [{ label: T("ladder_retry"), primary: true, onClick: () => { hideResult(); startLadder(); } },
+              { label: T("card_share"), onClick: () => { if (typeof shareResultCard === "function") shareResultCard({ icon: "🪜", title: T("ladder_card").replace("{n}", reached), sub: "Survival Ladder" }); } },
+              { label: T("exit_btn"), onClick: () => exitImmersive() }] });
+}
+
+// =========================================================================== //
 // DAILY PUZZLE + STREAK CALENDAR — one puzzle a day (same for everyone, chosen
 // by the date), a consecutive-day streak, and a month calendar of solved days.
 // A strong return hook: miss a day and the streak resets.
@@ -2292,6 +2403,7 @@ async function pzUserMove(uci) {
     await sleep(760);
     PZ.fen = prevFen; PZ.lastUci = prevLast;
     PZ.busy = false; renderPzBoard();
+    if (typeof STORM !== "undefined" && STORM.active) return stormEnd();   // MODE1: one miss ends the run
     PZ.fails = (PZ.fails || 0) + 1;
     if (PZ.fails >= (PZ.beginner ? 1 : 3)) { pzShowHint(); setStatus("pzFeedback", t("pz_autohint"), false); }  // struggling → auto hint
     return;
@@ -2381,6 +2493,9 @@ async function pzUserMoveLine(uci) {
 }
 
 function pzSolved() {
+  // MODE1 폭풍 퍼즐: in a Storm run, a solve just scores + serves the next puzzle
+  // (no rating/streak/result side effects).
+  if (typeof STORM !== "undefined" && STORM.active) return stormSolved();
   // ADD3: ad-hoc quiz position solved → advance the guess-the-move session and
   // stop (no PZ.list entry, no rating/streak/daily side effects).
   if (PZ.adhoc) { PZ.adhoc = null; if (PZ.quiz) { PZ.quiz = false; return qzSolved(); } return; }
@@ -2517,6 +2632,8 @@ document.querySelectorAll("#pzCats button").forEach((b) => {
   b.onclick = () => { PZ.cat = +b.dataset.cat; loadPuzzle(pzCatRange(PZ.cat).start); };
 });
 if ($("pzRecommend")) $("pzRecommend").onclick = () => loadAdaptivePuzzle();
+if ($("pzStormBtn")) $("pzStormBtn").onclick = () => startStorm();   // MODE1
+if ($("ladderBtn")) $("ladderBtn").onclick = () => startLadder();     // MODE3
 $("pzPrev").onclick = () => loadPuzzle(PZ.idx - 1);
 $("pzNext").onclick = () => loadPuzzle(PZ.idx + 1);
 $("pzReset").onclick = () => loadPuzzle(PZ.idx);
