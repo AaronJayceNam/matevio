@@ -33,7 +33,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=130">
+<link rel="stylesheet" href="/static/style.css?v=131">
 </head>
 <body>
 
@@ -78,6 +78,18 @@
     <p class="setdesc" data-i18n="boss_modal_s" style="margin:0 0 12px">보스를 하나씩 무찌르고 다음 보스를 해금하세요.</p>
     <div class="boss-grid" id="bossGrid"></div>
     <div class="auth-actions" style="margin-top:14px"><button class="ghost" id="bossClose" data-i18n="landing_skip">닫기</button></div>
+  </div>
+</div>
+
+<!-- MODE2: correspondence game board -->
+<div class="overlay hidden" id="corrGameModal">
+  <div class="auth-box" style="max-width:460px">
+    <div class="corr-info" id="corrInfo"></div>
+    <div class="boardwrap" style="margin:10px auto"><div class="boardstack"><div class="cboard" id="corrBoard"></div></div></div>
+    <div class="auth-actions" style="margin-top:12px;gap:8px">
+      <button class="ghost" id="corrResignBtn" data-i18n="corr_resign">기권</button>
+      <button class="ghost" id="corrCloseBtn" data-i18n="landing_skip">닫기</button>
+    </div>
   </div>
 </div>
 
@@ -261,6 +273,17 @@
               <input type="text" id="ogJoinCode" placeholder="예: AB3C" data-i18n-ph="og_join_ph" maxlength="4" style="text-transform:uppercase; flex:1">
               <button class="ghost" id="ogJoin" data-i18n="og_join">참가</button>
             </div>
+          </div>
+          <!-- MODE2: correspondence / daily chess -->
+          <div class="og-friend" style="margin-top:14px">
+            <h3 data-i18n="corr_title">📮 한 수 대국 (하루에 한 수, 여러 판)</h3>
+            <p class="setdesc" data-i18n="corr_desc" style="margin:0 0 8px">시간 여유롭게 — 열 때마다 한 수씩 두는 비동기 대국이에요.</p>
+            <div class="corr-new-row">
+              <input type="text" id="corrOpp" data-i18n-ph="corr_opp_ph" placeholder="상대 아이디 (비우면 공개 도전)">
+              <button class="primary" id="corrNewBtn" data-i18n="corr_new_btn">새 대국</button>
+            </div>
+            <div id="corrLogin" class="setdesc" data-i18n="corr_login" hidden>로그인하면 한 수 대국을 할 수 있어요.</div>
+            <div class="corr-list" id="corrList"></div>
           </div>
         </div>
       </div>
@@ -895,8 +918,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=130"></script>
-<script src="/static/app.js?v=130"></script>
+<script src="/static/i18n.js?v=131"></script>
+<script src="/static/app.js?v=131"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {

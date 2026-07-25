@@ -403,6 +403,7 @@ function switchTab(name) {
     if (typeof loadLeaderboard === "function") loadLeaderboard();
     if (typeof loadFriends === "function") loadFriends();
     if (typeof updateOgAuthGate === "function") updateOgAuthGate();
+    if (typeof corrRefresh === "function") corrRefresh();   // MODE2
   }
   if (section === "home" && typeof renderHome === "function") renderHome();
   if (section === "puzzle") {
@@ -2339,6 +2340,118 @@ function showArenaBoard(board) {
 function closeArenaBoard() { const m = document.getElementById("arenaModal"); if (m) m.classList.add("hidden"); }
 
 // =========================================================================== //
+// MODE2: CORRESPONDENCE / DAILY CHESS (한 수 대국) — async, turn-based games stored
+// server-side (Neon). Open the app, make one move; no live socket or clock. The
+// server (corr.py) validates every move with python-chess.
+// =========================================================================== //
+const CORR = { gid: null, state: null, sel: null };
+function corrGuard() {
+  const box = document.getElementById("corrLogin");
+  const ok = !!(AUTH && AUTH.token);
+  if (box) box.hidden = ok;
+  return ok;
+}
+async function corrRefresh() {
+  const el = document.getElementById("corrList"); if (!el) return;
+  if (!corrGuard()) { el.innerHTML = ""; return; }
+  let r; try { r = await api("/api/corr/list", { token: AUTH.token }); } catch (e) { return; }
+  const games = (r && r.games) || [];
+  const T = (typeof t === "function") ? t : ((k) => k);
+  if (!games.length) { el.innerHTML = '<div class="hist-empty">' + T("corr_empty") + "</div>"; return; }
+  el.innerHTML = games.map((g) => {
+    const opp = g.myColor === "w" ? g.black : (g.myColor === "b" ? g.white : (g.white + " vs " + g.black));
+    let tag;
+    if (g.status === "done") tag = '<span class="corr-tag done">' + T("corr_done") + "</span>";
+    else if (g.open) tag = '<span class="corr-tag open">' + T("corr_openjoin") + "</span>";
+    else if (g.myMove) tag = '<span class="corr-tag turn">' + T("corr_yourturn") + "</span>";
+    else tag = '<span class="corr-tag wait">' + T("corr_theirturn") + "</span>";
+    return '<button class="corr-row" data-cg="' + g.gid + '" data-open="' + (g.open ? 1 : 0) + '">' +
+      '<span class="corr-opp">' + escapeHtml(opp || "?") + "</span>" +
+      '<span class="corr-n">' + g.nMoves + T("corr_moves_suffix") + "</span>" + tag + "</button>";
+  }).join("");
+  el.querySelectorAll(".corr-row").forEach((b) => {
+    b.onclick = () => { if (b.dataset.open === "1") corrJoinGame(b.dataset.cg); else openCorrGame(b.dataset.cg); };
+  });
+}
+async function corrNew(oppId) {
+  if (!corrGuard()) return;
+  let r; try { r = await api("/api/corr/new", { token: AUTH.token, opponent: oppId || null }); } catch (e) { return; }
+  if (r && r.ok) { if (typeof metric === "function") metric("corr_new"); corrRefresh(); openCorrGame(r.gid); }
+  else if (typeof shareFlash === "function") shareFlash(t("corr_new_fail"));
+}
+async function corrJoinGame(gid) {
+  try { await api("/api/corr/join", { token: AUTH.token, gid }); } catch (e) {}
+  corrRefresh(); openCorrGame(gid);
+}
+async function openCorrGame(gid) {
+  CORR.gid = gid; CORR.sel = null;
+  let st; try { st = await api("/api/corr/get", { token: AUTH.token, gid }); } catch (e) { return; }
+  if (!st || !st.ok) return;
+  CORR.state = st;
+  const m = document.getElementById("corrGameModal"); if (m) m.classList.remove("hidden");
+  renderCorrBoard();
+}
+function closeCorrGame() { const m = document.getElementById("corrGameModal"); if (m) m.classList.add("hidden"); CORR.gid = null; }
+function renderCorrBoard() {
+  const st = CORR.state; const board = document.getElementById("corrBoard"); if (!board || !st) return;
+  const T = (typeof t === "function") ? t : ((k) => k);
+  const orient = st.myColor === "b" ? "b" : "w";
+  const map = parseFen(st.fen);
+  const files = orient === "w" ? [..."abcdefgh"] : [..."hgfedcba"];
+  const ranks = orient === "w" ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8];
+  const legal = (st.status === "active" && st.myColor === st.turn) ? (st.legal || {}) : {};
+  const lf = st.lastUci ? st.lastUci.slice(0, 2) : null, lt = st.lastUci ? st.lastUci.slice(2, 4) : null;
+  board.innerHTML = "";
+  for (const rank of ranks) {
+    for (const f of files) {
+      const sq = f + rank, fi = "abcdefgh".indexOf(f);
+      const div = document.createElement("div");
+      div.className = "sq " + ((fi + rank) % 2 === 0 ? "light" : "dark");
+      if (sq === lf || sq === lt) div.classList.add("last");
+      if (CORR.sel === sq) div.classList.add("sel");
+      const pc = map[sq];
+      if (pc) { const s = document.createElement("span"); s.className = "pc " + (pc === pc.toUpperCase() ? "w" : "b"); s.textContent = GLYPH[pc.toLowerCase()]; div.appendChild(s); }
+      if (CORR.sel && legal[CORR.sel] && legal[CORR.sel].includes(sq)) { const d = document.createElement("div"); d.className = "dot" + (map[sq] ? " cap" : ""); div.appendChild(d); }
+      addCoords(div, f, rank, files, ranks);
+      div.onclick = () => onCorrClick(sq, legal, map);
+      board.appendChild(div);
+    }
+  }
+  const info = document.getElementById("corrInfo");
+  if (info) {
+    let msg;
+    if (st.status === "done") msg = T("corr_result").replace("{r}", st.result || "");
+    else if (st.myColor === st.turn) msg = T("corr_makemove");
+    else if (!st.myColor) msg = T("corr_spectate");
+    else msg = T("corr_waiting");
+    info.innerHTML = "<b>" + escapeHtml(st.white) + "</b> vs <b>" + escapeHtml(st.black) + "</b> · " + msg + (st.check ? " ⚠️" : "");
+  }
+}
+function onCorrClick(sq, legal, map) {
+  if (!legal || !Object.keys(legal).length) return;   // not my move / game over
+  if (CORR.sel) {
+    if (legal[CORR.sel] && legal[CORR.sel].includes(sq)) {
+      let uci = CORR.sel + sq;
+      if ((map[CORR.sel] || "").toLowerCase() === "p" && (sq[1] === "8" || sq[1] === "1")) uci += "q";
+      CORR.sel = null; return corrSubmitMove(uci);
+    }
+    if (legal[sq]) { CORR.sel = sq; renderCorrBoard(); return; }
+    CORR.sel = null; renderCorrBoard(); return;
+  }
+  if (legal[sq]) { CORR.sel = sq; renderCorrBoard(); }
+}
+async function corrSubmitMove(uci) {
+  let r; try { r = await api("/api/corr/move", { token: AUTH.token, gid: CORR.gid, uci }); } catch (e) { return; }
+  if (r && r.ok) { await openCorrGame(CORR.gid); corrRefresh(); if (r.status === "done" && typeof shareFlash === "function") shareFlash(t("corr_gameover")); }
+  else if (typeof shareFlash === "function") shareFlash(t("corr_move_fail"));
+}
+async function corrResignGame() {
+  if (!CORR.gid) return;
+  try { await api("/api/corr/resign", { token: AUTH.token, gid: CORR.gid }); } catch (e) {}
+  await openCorrGame(CORR.gid); corrRefresh();
+}
+
+// =========================================================================== //
 // MODE3: SURVIVAL LADDER (서바이벌 래더) — one life; climb AI levels 1→15. First
 // loss ends the run at the level you reached. Reuses the AI game flow.
 // =========================================================================== //
@@ -3158,6 +3271,10 @@ if ($("pzRecommend")) $("pzRecommend").onclick = () => loadAdaptivePuzzle();
 if ($("pzStormBtn")) $("pzStormBtn").onclick = () => startStorm();   // MODE1
 if ($("pzArenaBtn")) $("pzArenaBtn").onclick = () => { if (arenaDoneToday()) openArenaBoard(); else startArena(); };   // MODE5
 if ($("arenaClose")) $("arenaClose").onclick = () => closeArenaBoard();
+// MODE2: correspondence wiring
+if ($("corrNewBtn")) $("corrNewBtn").onclick = () => corrNew(($("corrOpp") && $("corrOpp").value || "").trim());
+if ($("corrCloseBtn")) $("corrCloseBtn").onclick = () => closeCorrGame();
+if ($("corrResignBtn")) $("corrResignBtn").onclick = () => corrResignGame();
 if ($("ladderBtn")) $("ladderBtn").onclick = () => startLadder();     // MODE3
 if ($("bossBtn")) $("bossBtn").onclick = () => openBossModal();       // MODE6
 if ($("bossClose")) $("bossClose").onclick = () => closeBossModal();

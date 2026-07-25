@@ -724,6 +724,9 @@ register_online(app, _legal_state,
 # Accounts (register/login + server-saved progress) — /api/auth/*
 from webapp.auth import register_auth  # noqa: E402
 register_auth(app)
+# MODE2: correspondence / daily chess (async games in Neon) + MODE8 async swiss
+from webapp.corr import register_corr  # noqa: E402
+register_corr(app)
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
