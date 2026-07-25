@@ -18,7 +18,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=123">
+<link rel="stylesheet" href="/static/style.css?v=124">
 </head>
 <body>
 
@@ -504,6 +504,8 @@
     <button class="primary" data-goto="puzzle" data-i18n="empty_growth_cta">🧩 첫 퍼즐 풀기</button>
   </div>
   <div class="growth-wrap">
+    <!-- FEAT5: study path curriculum -->
+    <div class="card" id="studyPath"></div>
     <!-- ADD8: the improvement journey — weakness → puzzles → learn → drills -->
     <div class="card" id="journeyCard"></div>
     <div class="card" id="leagueCardWrap">
@@ -570,6 +572,7 @@
   <div class="card summary" id="rvSummary"></div>
   <div class="rv-actions" id="rvActions" hidden></div>
   <div class="rv-opening card" id="rvOpening" hidden></div>
+  <div class="blunder-deck card" id="blunderDeck" hidden></div>
   <div class="cols">
     <div>
       <div class="boardwrap">
@@ -830,8 +833,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=123"></script>
-<script src="/static/app.js?v=123"></script>
+<script src="/static/i18n.js?v=124"></script>
+<script src="/static/app.js?v=124"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {

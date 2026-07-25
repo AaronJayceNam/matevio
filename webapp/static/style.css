@@ -1390,6 +1390,29 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 .hub-resume .ht-txt b{ font-size:15px; font-weight:800; line-height:1.2; }
 .hub-resume .ht-sub{ font-size:12px; color:var(--muted); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .hub-resume .ht-go{ flex:0 0 auto; font-size:18px; color:var(--muted); }
+/* FEAT1: Blunder Deck */
+.blunder-deck{ margin:0 0 12px; }
+.blunder-deck .bd-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.blunder-deck .bd-count{ font-size:var(--fs-sm); color:var(--muted); }
+.blunder-deck .bd-go{ width:100%; border:none; border-radius:var(--r-md); padding:12px; font-weight:800; font-size:14px; cursor:pointer;
+  background:linear-gradient(135deg,#e0526b,#b8324a); color:#fff; box-shadow:0 6px 16px -8px #b8324a; min-height:44px; }
+.blunder-deck .bd-clear{ font-size:var(--fs-sm); color:var(--muted); text-align:center; padding:6px; }
+/* FEAT5: Study Path */
+#studyPath .sp-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+#studyPath .sp-count{ font-weight:800; color:var(--accent); font-variant-numeric:tabular-nums; }
+#studyPath .sp-next{ width:100%; border:none; border-radius:var(--r-md); padding:12px; font-weight:800; font-size:14px; cursor:pointer;
+  background:linear-gradient(180deg,var(--accent2),var(--accent)); color:#08130c; margin:0 0 12px; min-height:44px; }
+#studyPath .sp-done{ font-size:var(--fs-sm); color:var(--accent); font-weight:800; text-align:center; margin:0 0 12px; }
+#studyPath .sp-list{ display:flex; flex-direction:column; gap:7px; }
+#studyPath .sp-row{ display:flex; align-items:center; gap:10px; cursor:pointer; padding:7px 8px; border-radius:var(--r-sm); transition:background .12s; }
+#studyPath .sp-row:hover{ background:var(--panel2); }
+#studyPath .sp-row.cur{ background:var(--panel2); outline:1px solid var(--accent); }
+#studyPath .sp-row.done{ opacity:.6; }
+#studyPath .sp-ic{ font-size:16px; flex:0 0 auto; width:22px; text-align:center; }
+#studyPath .sp-name{ flex:0 0 auto; min-width:96px; font-size:var(--fs-sm); font-weight:700; }
+#studyPath .sp-bar{ flex:1; height:6px; border-radius:var(--r-pill); background:var(--line); overflow:hidden; }
+#studyPath .sp-fill{ display:block; height:100%; border-radius:var(--r-pill); background:linear-gradient(90deg,var(--accent2),var(--accent)); }
+#studyPath .sp-pct{ flex:0 0 auto; font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; width:34px; text-align:right; }
 /* MODE1: Puzzle Storm */
 .pz-storm{ display:block; width:100%; margin:0 0 8px; padding:12px 14px; border:none; border-radius:var(--r-md);
   background:linear-gradient(135deg,#ffb347,#ff7a45); color:#2a1500; font-weight:800; font-size:14px; cursor:pointer;

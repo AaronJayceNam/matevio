@@ -351,6 +351,7 @@ function switchTab(name) {
     document.querySelectorAll("[data-revswitch]").forEach((b) =>
       b.classList.toggle("on", b.dataset.revswitch === section));
   }
+  if (section === "review" && typeof renderBlunderDeck === "function") renderBlunderDeck();   // FEAT1
   const navName = TAB_GROUP[section] || section;   // which top-level nav button lights up
   if (section !== "review" && typeof coachStopSpeak === "function") coachStopSpeak();  // stop the coach voice
   document.querySelectorAll("[data-tab]").forEach((b) =>
@@ -841,6 +842,9 @@ function loadReview(view) {
 
   renderCoach(view.coach);
   rvRender();
+  // FEAT1: capture this game's blunders into the spaced-repetition deck
+  if (typeof blunderCaptureFromReview === "function") { try { blunderCaptureFromReview(); } catch (e) {} }
+  if (typeof renderBlunderDeck === "function") renderBlunderDeck();
 }
 
 // Build a short, plain-language coach line for one move from the engine's own
@@ -1128,6 +1132,144 @@ function qzFinish() {
       { label: t("rx_back_review"), primary: true, onClick: () => { hideResult(); switchTab("review"); } },
       { label: t("pz_theme_list_btn"), onClick: () => { hideResult(); renderPzGrid(); } },
     ] });
+}
+
+// =========================================================================== //
+// FEAT1: BLUNDER DECK (실수 덱) — every blunder the review flags in YOUR games
+// becomes a spaced-repetition card ("find the better move") that resurfaces on an
+// SM-2/Leitner schedule until the correction sticks. Cards are captured once at
+// review time; drilling reuses the ad-hoc quiz board.
+// =========================================================================== //
+const BD = { active: false, items: [], i: 0 };
+const BD_BOXES = [1, 3, 7, 21, 60];   // days until next review, per mastery box
+function blunderCards() { try { return JSON.parse(localStorage.getItem("cc_blunders") || "[]") || []; } catch (e) { return []; } }
+function saveBlunders(a) { try { localStorage.setItem("cc_blunders", JSON.stringify(a.slice(-200))); } catch (e) {} if (typeof authSchedulePush === "function") authSchedulePush(); }
+function blunderDue() { const today = dateStr(); return blunderCards().filter((c) => !c.due || c.due <= today); }
+// capture the human's blunders from the freshly loaded review as new cards
+function blunderCaptureFromReview() {
+  if (!RV.view || !LAST_REQ) return 0;
+  const hc = (typeof rvHumanColor === "function") ? rvHumanColor() : "white";
+  const all = (LAST_REQ.moves) || [];
+  const cards = blunderCards(); let added = 0;
+  (RV.view.moves || []).filter((m) => m.color === hc && m.classification === "Blunder" && m.best).forEach((m) => {
+    const key = all.slice(0, m.ply - 1).join("") + "|" + m.ply;
+    if (cards.some((c) => c.key === key)) return;
+    cards.push({ key, before: all.slice(0, m.ply - 1), bestSan: m.best, playedSan: m.san, box: 0, due: dateStr(), added: dateStr() });
+    added++;
+  });
+  if (added) saveBlunders(cards);
+  return added;
+}
+function bdSchedule(cardKey, correct) {
+  const cards = blunderCards();
+  const c = cards.find((x) => x.key === cardKey); if (!c) return;
+  c.box = correct ? Math.min(BD_BOXES.length - 1, (c.box || 0) + 1) : 0;
+  c.due = addDays(dateStr(), BD_BOXES[c.box]);
+  saveBlunders(cards);
+}
+function startBlunderDrill() {
+  const due = blunderDue();
+  if (!due.length) { if (typeof shareFlash === "function") shareFlash(t("bd_none")); return; }
+  BD.active = true; BD.items = due.slice(0, 12); BD.i = 0;
+  if (!PZ.baseFen) PZ.baseFen = REVIEW_START_FEN;
+  switchTab("puzzle");
+  if (typeof metric === "function") metric("blunder_drill");
+  loadBlunderCard();
+}
+async function loadBlunderCard() {
+  const it = BD.items[BD.i]; if (!it) return bdFinish();
+  if (typeof overlay === "function") overlay(true, t("qz_loading"));
+  let st;
+  try { st = await api("/api/eval_fen", { fen: REVIEW_START_FEN, moves: it.before, movetime: 220 }); }
+  catch (e) { if (typeof overlay === "function") overlay(false); return bdFinish(); }
+  if (typeof overlay === "function") overlay(false);
+  if (!st.bestUci) { bdSchedule(it.key, true); BD.i++; return loadBlunderCard(); }
+  const adhoc = { fen: st.fen, solution: [st.bestUci], solutionSan: [it.bestSan], mateIn: 0, theme: "tactic", level: -1, rating: null };
+  loadPuzzle(-1, { force: true, adhoc, bdrill: true });
+  $("pzPrompt").innerHTML = t("bd_prompt").replace("{i}", BD.i + 1).replace("{n}", BD.items.length);
+  setStatus("pzFeedback", t("qz_hint_played").replace("{mv}", it.playedSan), false);
+}
+function bdSolved() {
+  const it = BD.items[BD.i];
+  if (it) bdSchedule(it.key, !PZ.revealed);   // needed the answer → keep it in rotation
+  if (typeof xpAdd === "function" && !PZ.revealed) xpAdd(4);
+  BD.i++;
+  if (BD.i < BD.items.length) {
+    showResult({ kind: "win", icon: "🃏", title: t("bd_correct"), sub: t("qz_progress").replace("{i}", BD.i).replace("{n}", BD.items.length),
+      actions: [{ label: t("qz_next_btn"), primary: true, onClick: () => { hideResult(); loadBlunderCard(); } }] });
+  } else { bdFinish(); }
+}
+function bdFinish() {
+  BD.active = false;
+  showResult({ kind: "win", icon: "🎯", title: t("bd_done_title"), sub: t("bd_done_sub"),
+    actions: [
+      { label: t("rx_back_review"), primary: true, onClick: () => { hideResult(); switchTab("review"); } },
+      { label: t("pz_theme_list_btn"), onClick: () => { hideResult(); renderPzGrid(); } },
+    ] });
+}
+function renderBlunderDeck() {
+  const el = document.getElementById("blunderDeck"); if (!el) return;
+  const cards = blunderCards(), due = blunderDue().length;
+  if (!cards.length) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML =
+    '<div class="bd-head"><b>🃏 ' + t("bd_title") + '</b><span class="bd-count">' + t("bd_count").replace("{n}", cards.length).replace("{d}", due) + "</span></div>" +
+    (due ? '<button class="primary bd-go" id="bdGoBtn">' + t("bd_go").replace("{n}", due) + "</button>"
+         : '<div class="bd-clear">' + t("bd_clear") + "</div>");
+  const b = document.getElementById("bdGoBtn"); if (b) b.onclick = () => startBlunderDrill();
+}
+
+// =========================================================================== //
+// FEAT5: STUDY PATH (학습 경로) — an ordered curriculum over the EXISTING content
+// with a mastery % per skill and one "next" pointer, so a player always knows
+// what to study next. Pure client logic over content + stats already stored.
+// =========================================================================== //
+const STUDY_MODS = [
+  { key: "rules", ic: "📖", learn: "pawn" },
+  { key: "hanging", ic: "🪝", cat: 5, need: 5 },
+  { key: "fork", ic: "🍴", cat: 1, need: 5 },
+  { key: "pin", ic: "📌", cat: 2, need: 5 },
+  { key: "skewer", ic: "🍢", cat: 3, need: 5 },
+  { key: "discovered", ic: "💥", cat: 4, need: 5 },
+  { key: "mate", ic: "♚", cat: 0, need: 8 },
+  { key: "opening", ic: "♟️", opening: true },
+];
+function studyThemeSolved(cat) {
+  let n = 0;
+  for (const p of (PZ.list || [])) { const c = (typeof p.cat === "number") ? p.cat : 0; if (c === cat && PZ.solved.has(p.level)) n++; }
+  return n;
+}
+function studyMastery(m) {
+  if (m.learn) return localStorage.getItem("cc_study_" + m.key) === "1" ? 100 : 0;
+  if (m.opening) return localStorage.getItem("cc_study_opening") === "1" ? 100 : 0;
+  return Math.min(100, Math.round(studyThemeSolved(m.cat) / m.need * 100));
+}
+function studyGo(m) {
+  if (m.learn) { localStorage.setItem("cc_study_" + m.key, "1"); switchTab("learn"); if (typeof showLearn === "function") try { showLearn(m.learn); } catch (e) {} return; }
+  if (m.opening) { localStorage.setItem("cc_study_opening", "1"); switchTab("learn"); return; }
+  if (typeof practiceThemeBand === "function") practiceThemeBand(m.cat);
+  else { switchTab("puzzle"); if (typeof loadAdaptivePuzzle === "function") loadAdaptivePuzzle(); }
+}
+function renderStudyPath() {
+  const el = document.getElementById("studyPath"); if (!el) return;
+  const T = (typeof t === "function") ? t : ((k) => k);
+  const rows = STUDY_MODS.map((m) => ({ m, pct: studyMastery(m) }));
+  const done = rows.filter((r) => r.pct >= 100).length;
+  const nextIdx = rows.findIndex((r) => r.pct < 100);
+  el.innerHTML =
+    '<div class="sp-head"><b>🧭 ' + T("study_title") + '</b><span class="sp-count">' + done + "/" + rows.length + "</span></div>" +
+    (nextIdx >= 0
+      ? '<button class="primary sp-next" id="spNextBtn">' + T("study_next").replace("{skill}", T("study_m_" + rows[nextIdx].m.key)) + " →</button>"
+      : '<div class="sp-done">🎓 ' + T("study_complete") + "</div>") +
+    '<div class="sp-list">' + rows.map((r, i) =>
+      '<div class="sp-row' + (r.pct >= 100 ? " done" : (i === nextIdx ? " cur" : "")) + '" data-spi="' + i + '">' +
+      '<span class="sp-ic">' + r.m.ic + '</span>' +
+      '<span class="sp-name">' + T("study_m_" + r.m.key) + "</span>" +
+      '<span class="sp-bar"><span class="sp-fill" style="width:' + r.pct + '%"></span></span>' +
+      '<span class="sp-pct">' + r.pct + "%</span></div>").join("") + "</div>";
+  const nb = document.getElementById("spNextBtn");
+  if (nb && nextIdx >= 0) nb.onclick = () => studyGo(rows[nextIdx].m);
+  el.querySelectorAll(".sp-row").forEach((row) => { row.onclick = () => studyGo(STUDY_MODS[+row.dataset.spi]); });
 }
 
 // ---- coach ----
@@ -2286,7 +2428,7 @@ async function loadPuzzle(idx, opts) {
   // run it through the tactical single-move check as a "guess the move" quiz.
   if (opts && opts.adhoc) {
     const p = opts.adhoc;
-    PZ.adhoc = p; PZ.quiz = !!opts.quiz; PZ.rxActive = false;
+    PZ.adhoc = p; PZ.quiz = !!opts.quiz; PZ.bdrill = !!opts.bdrill; PZ.rxActive = false;
     PZ.idx = -1; PZ.fails = 0; PZ.beginner = false; PZ.revealed = false; PZ.locked = false;
     PZ.baseFen = p.fen; PZ.fen = p.fen; PZ.mateIn = 0; PZ.movesLeft = 0;
     PZ.line = p.solution || []; PZ.played = []; PZ.theme = p.theme || "tactic";
@@ -2297,7 +2439,7 @@ async function loadPuzzle(idx, opts) {
     renderPzBoard();
     return;
   }
-  PZ.adhoc = null; PZ.quiz = false;
+  PZ.adhoc = null; PZ.quiz = false; PZ.bdrill = false;
   if (!(opts && opts.rx)) PZ.rxActive = false;   // leaving a prescription session
   if (idx < 0 || idx >= PZ.list.length) return;
   PZ.idx = idx; PZ.cat = pzCatOf(idx);
@@ -2498,7 +2640,7 @@ function pzSolved() {
   if (typeof STORM !== "undefined" && STORM.active) return stormSolved();
   // ADD3: ad-hoc quiz position solved → advance the guess-the-move session and
   // stop (no PZ.list entry, no rating/streak/daily side effects).
-  if (PZ.adhoc) { PZ.adhoc = null; if (PZ.quiz) { PZ.quiz = false; return qzSolved(); } return; }
+  if (PZ.adhoc) { PZ.adhoc = null; if (PZ.quiz) { PZ.quiz = false; return qzSolved(); } if (PZ.bdrill) { PZ.bdrill = false; return bdSolved(); } return; }
   const p = PZ.list[PZ.idx];
   const firstSolve = !PZ.solved.has(p.level);
   PZ.solved.add(p.level); pzSaveSolved(); renderPzGrid();
@@ -3447,6 +3589,7 @@ function collectProgress() {
     xp: (typeof xpGet === "function") ? xpGet() : 0,
     pzRating: (typeof pzRatingGet === "function") ? pzRatingGet() : 0,
     referred_by: localStorage.getItem("cc_ref") || undefined,   // ADD4: attribution
+    blunders: (typeof blunderCards === "function") ? blunderCards() : undefined,   // FEAT1
   };
 }
 
@@ -3482,6 +3625,7 @@ function applyProgress(p) {
   }
   if (typeof p.xp === "number") localStorage.setItem("cc_xp", String(Math.max(p.xp, (typeof xpGet === "function") ? xpGet() : 0)));
   if (typeof p.pzRating === "number" && p.pzRating > 0) localStorage.setItem("cc_pz_rating", String(Math.round(p.pzRating)));
+  if (Array.isArray(p.blunders)) localStorage.setItem("cc_blunders", JSON.stringify(p.blunders.slice(-200)));   // FEAT1
   if (p.reviewQueue && typeof p.reviewQueue === "object") {   // merge review queue (keep more-graduated box)
     const cur = (typeof reviewQueue === "function") ? reviewQueue() : {};
     const merged = { ...cur };
@@ -3519,7 +3663,7 @@ function clearLocalProgress() {
   ["cc_rating3", "cc_history", "cc_best_level", "cc_streak_best", "cc_pz_streak",
    "cc_pz_streak_best", "cc_puzzles_solved", "cc_achievements", "cc_daily_solved",
    "cc_freeze_dates", "cc_streak_miles", "cc_review_queue", "cc_xp", "cc_quests", "cc_skill",
-   "cc_pz_rating", "cc_league",
+   "cc_pz_rating", "cc_league", "cc_blunders",
   ].forEach((k) => localStorage.removeItem(k));
   if (typeof PZ !== "undefined") PZ.solved = new Set();
 }
@@ -4117,6 +4261,7 @@ function renderJourney() {
 
 function renderGrowth() {
   if (typeof renderProfilePanel === "function") renderProfilePanel();   // ADD2/ADD5
+  if (typeof renderStudyPath === "function") renderStudyPath();         // FEAT5
   if (typeof renderJourney === "function") renderJourney();             // ADD8
   if (typeof renderLeague === "function") renderLeague();
   renderWeakness();
