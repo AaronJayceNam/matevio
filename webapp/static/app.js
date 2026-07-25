@@ -743,6 +743,22 @@ function loadReview(view) {
     t("rv_accuracy_label") +
     `<b>${t("side_white")} ${view.white.accuracy.toFixed(1)}%</b> &nbsp;·&nbsp; <b>${t("side_black")} ${view.black.accuracy.toFixed(1)}%</b>`;
 
+  // ADD3 + ADD6: turn this game's mistakes into active practice.
+  const nMiss = (typeof rvHumanMistakes === "function") ? rvHumanMistakes().length : 0;
+  const acts = $("rvActions");
+  if (acts) {
+    if (nMiss > 0) {
+      acts.hidden = false;
+      acts.innerHTML =
+        `<button class="rv-act" id="rvQuizBtn">🎯 ${t("qz_start_btn")}</button>` +
+        `<button class="rv-act" id="rvRxBtn">🩺 ${t("rx_start_btn")}</button>` +
+        `<span class="rv-act-note">${t("rv_acts_note").replace("{n}", nMiss)}</span>`;
+      const q = $("rvQuizBtn"), r = $("rvRxBtn");
+      if (q) q.onclick = () => startActiveReview();
+      if (r) r.onclick = () => startPrescription();
+    } else { acts.hidden = true; acts.innerHTML = ""; }
+  }
+
   // movelist
   let html = "";
   view.moves.forEach((m) => {
@@ -836,11 +852,20 @@ function rvDetail() {
         `<button class="ghost coach-speak" id="coachVoiceToggle">${vOn ? t("coach_voice_on") : t("coach_voice_off")}</button></div>` +
         `<div class="coach-text">${escapeHtml(cmt)}</div></div>` +
     `</div>`;
+  // FIX8: if this weak move maps to a trainable theme, offer a one-tap drill.
+  const tc = (typeof moveThemeCat === "function") ? moveThemeCat(m) : null;
+  const themeChip = tc
+    ? `<div class="rv-theme"><span class="rv-theme-tag">${t("rv_theme_label").replace("{theme}", t("pztheme_" + tc.theme))}</span>` +
+      `<button class="rv-theme-cta" data-cat="${tc.cat}">${t("rv_theme_practice")}</button></div>`
+    : "";
   $("rvDetail").innerHTML =
     coachMini +
     `<div><b style="font-size:16px">${m.moveNumber}${m.color === "white" ? "." : "..."} ${turn} ${m.san}${m.symbol}</b> &nbsp; ${tag}${missed}</div>` +
     explain +
+    themeChip +
     pvRow;
+  const tcBtn = $("rvDetail").querySelector(".rv-theme-cta");
+  if (tcBtn) tcBtn.onclick = () => practiceThemeBand(+tcBtn.dataset.cat);
   $("coachVoiceToggle").onclick = () => {
     const on = coachVoiceOn();
     localStorage.setItem("cc_coach_voice", on ? "0" : "1");
@@ -897,6 +922,143 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "End") rvGo(RV.N);
 });
 window.addEventListener("resize", () => { if (RV.view) rvGraph(); });
+
+// =========================================================================== //
+// REVIEW → LEARNING: theme classifier (FIX8), prescription drills (ADD6),
+// active "guess the move" review (ADD3). All reuse the puzzle board + engine.
+// =========================================================================== //
+const REVIEW_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+// FIX8: classify what a weak move got wrong into a trainable theme, from the
+// engine's own move fields (client-side heuristic). Returns {cat, theme} | null.
+function moveThemeCat(m) {
+  if (!m) return null;
+  const weak = (m.classification === "Blunder" || m.classification === "Mistake" || m.classification === "Inaccuracy");
+  if (!weak && !m.missedWin) return null;
+  // hung a real piece: the opponent's best reply just wins material
+  if (m.replyCapType && m.replyCapType !== "pawn") return { cat: THEME_CAT.hanging, theme: "hanging" };
+  // missed a winning shot / a better capture → a tactic; without a richer motif
+  // signal, route to fork drills (the most common decisive beginner tactic).
+  if (m.missedWin || m.bestIsCapture) return { cat: THEME_CAT.fork, theme: "fork" };
+  if (m.replyCapType === "pawn") return { cat: THEME_CAT.hanging, theme: "hanging" };
+  return null;
+}
+// which colour did the human play? request carries it; else the side with more
+// (blunders+mistakes) is the human (the AI/opponent plays cleaner on average).
+function rvHumanColor() {
+  const h = LAST_REQ && LAST_REQ.human;
+  if (h === "w" || h === "white") return "white";
+  if (h === "b" || h === "black") return "black";
+  if (!RV.view) return "white";
+  let w = 0, b = 0;
+  RV.view.moves.forEach((m) => {
+    if (m.classification === "Blunder" || m.classification === "Mistake") { if (m.color === "white") w++; else b++; }
+  });
+  return b >= w ? "black" : "white";
+}
+function rvHumanMistakes() {
+  if (!RV.view) return [];
+  const hc = rvHumanColor();
+  return RV.view.moves
+    .filter((m) => m.color === hc && (m.classification === "Blunder" || m.classification === "Mistake"))
+    .sort((a, b) => (b.cpl || 0) - (a.cpl || 0));
+}
+
+// pick the band-closest puzzle within a single theme (used by prescription + the
+// per-move "practice this" chip).
+function pickThemePuzzle(cat) {
+  const my = (typeof pzRatingGet === "function") ? pzRatingGet() : 800;
+  const { start, count } = pzCatRange(cat);
+  const pool = [];
+  for (let i = start; i < start + count; i++) {
+    const p = PZ.list[i]; if (!p) continue;
+    pool.push({ i, r: (typeof p.rating === "number" ? p.rating : my), solved: PZ.solved.has(p.level) });
+  }
+  const uns = pool.filter((x) => !x.solved);
+  const use = uns.length ? uns : pool;
+  use.sort((a, b) => Math.abs(a.r - my) - Math.abs(b.r - my));
+  return use.length ? use[0].i : start;
+}
+function practiceThemeBand(cat) { PZ.cat = cat; switchTab("puzzle"); loadPuzzle(pickThemePuzzle(cat), { force: true }); }
+
+// ---- ADD6: per-game prescription — 3 puzzles targeting this game's mistakes ----
+const RX = { queue: [], i: 0 };
+function startPrescription() {
+  const mistakes = rvHumanMistakes();
+  const cats = [], seen = new Set();
+  for (const m of mistakes) {
+    const tc = moveThemeCat(m); if (!tc) continue;
+    if (seen.has(tc.cat)) continue; seen.add(tc.cat); cats.push(tc.cat);
+    if (cats.length >= 3) break;
+  }
+  const q = cats.map((c) => pickThemePuzzle(c));
+  while (q.length < 3) { const a = pickAdaptivePuzzle(); if (!q.includes(a)) q.push(a); else break; }
+  RX.queue = [...new Set(q)]; RX.i = 0;
+  if (!RX.queue.length) { if (typeof shareFlash === "function") shareFlash(t("rx_none")); return; }
+  if (!PZ.baseFen) PZ.baseFen = REVIEW_START_FEN;   // suppress the tab's deferred boot-load
+  switchTab("puzzle");
+  PZ.rxActive = true;
+  loadPuzzle(RX.queue[0], { force: true, rx: true });
+  if (typeof shareFlash === "function") shareFlash(t("rx_started").replace("{n}", RX.queue.length));
+}
+function rxAdvance() {
+  RX.i++;
+  if (RX.i < RX.queue.length) {
+    showResult({ kind: "win", icon: "🩺", title: t("rx_next_title"),
+      sub: t("rx_progress").replace("{i}", RX.i).replace("{n}", RX.queue.length),
+      actions: [{ label: t("rx_next_btn"), primary: true, onClick: () => loadPuzzle(RX.queue[RX.i], { force: true, rx: true }) }] });
+  } else {
+    PZ.rxActive = false;
+    showResult({ kind: "win", icon: "✅", title: t("rx_done_title"), sub: t("rx_done_sub"),
+      actions: [
+        { label: t("rx_back_review"), primary: true, onClick: () => { hideResult(); switchTab("review"); } },
+        { label: t("pz_theme_list_btn"), onClick: () => { hideResult(); renderPzGrid(); } },
+      ] });
+  }
+}
+
+// ---- ADD3: active "guess the move" review — replay your mistake positions and
+// try to FIND the best move yourself, checked live by the engine. ----
+const QZ = { items: [], i: 0 };
+async function startActiveReview() {
+  const mistakes = rvHumanMistakes().filter((m) => m.best).slice(0, 5);
+  if (!mistakes.length) { if (typeof shareFlash === "function") shareFlash(t("qz_none")); return; }
+  const all = (LAST_REQ && LAST_REQ.moves) || [];
+  QZ.items = mistakes.map((m) => ({ ply: m.ply, before: all.slice(0, m.ply - 1), bestSan: m.best, playedSan: m.san }));
+  QZ.i = 0;
+  if (!PZ.baseFen) PZ.baseFen = REVIEW_START_FEN;   // suppress the tab's deferred boot-load
+  switchTab("puzzle");
+  await loadQuizItem();
+}
+async function loadQuizItem() {
+  const it = QZ.items[QZ.i]; if (!it) return;
+  if (typeof overlay === "function") overlay(true, t("qz_loading"));
+  let st;
+  try { st = await api("/api/eval_fen", { fen: REVIEW_START_FEN, moves: it.before, movetime: 220 }); }
+  catch (e) { if (typeof overlay === "function") overlay(false); if (typeof shareFlash === "function") shareFlash(t("qz_none")); return; }
+  if (typeof overlay === "function") overlay(false);
+  if (!st.bestUci) { QZ.i++; if (QZ.i < QZ.items.length) return loadQuizItem(); return qzFinish(); }
+  const adhoc = { fen: st.fen, solution: [st.bestUci], solutionSan: [it.bestSan], mateIn: 0,
+    theme: "tactic", level: -1, rating: null };
+  loadPuzzle(-1, { force: true, adhoc, quiz: true });
+  $("pzPrompt").innerHTML = t("qz_prompt").replace("{i}", QZ.i + 1).replace("{n}", QZ.items.length);
+  setStatus("pzFeedback", t("qz_hint_played").replace("{mv}", it.playedSan), false);
+}
+function qzSolved() {
+  QZ.i++;
+  if (QZ.i < QZ.items.length) {
+    showResult({ kind: "win", icon: "🎯", title: t("qz_correct_title"),
+      sub: t("qz_progress").replace("{i}", QZ.i).replace("{n}", QZ.items.length),
+      actions: [{ label: t("qz_next_btn"), primary: true, onClick: () => { hideResult(); loadQuizItem(); } }] });
+  } else { qzFinish(); }
+}
+function qzFinish() {
+  showResult({ kind: "win", icon: "🏆", title: t("qz_done_title"), sub: t("qz_done_sub"),
+    actions: [
+      { label: t("rx_back_review"), primary: true, onClick: () => { hideResult(); switchTab("review"); } },
+      { label: t("pz_theme_list_btn"), onClick: () => { hideResult(); renderPzGrid(); } },
+    ] });
+}
 
 // ---- coach ----
 // ---- coach voice (Web Speech API — free, on-device, follows app language) ----
@@ -1348,7 +1510,7 @@ function aiEndGame() {
     addHistory({ mode: "ai", opponent: aiName, result: kind, ratingDelta: null,
       moves: [...AIG.moves], white, black });
     $("aiAnalyze").classList.remove("hidden");
-    const reviewReq = { moves: [...AIG.moves], white, black, movetime: REVIEW_MT };
+    const reviewReq = { moves: [...AIG.moves], white, black, movetime: REVIEW_MT, human: AIG.human };
     prefetchAnalyze(reviewReq).catch(() => {});
     actions.push({ label: T("ai_review_btn"), primary: true, onClick: () => runAnalyze(reviewReq) });
   }
@@ -1592,7 +1754,7 @@ $("aiResign").onclick = () => {
 $("aiAnalyze").onclick = () => {
   if (!AIG.moves.length) return;
   const { white, black } = aiPlayerNames();
-  runAnalyze({ moves: AIG.moves, white, black, movetime: REVIEW_MT });
+  runAnalyze({ moves: AIG.moves, white, black, movetime: REVIEW_MT, human: AIG.human });
 };
 
 // =========================================================================== //
@@ -1896,6 +2058,23 @@ function renderPzRatingLine() {
 }
 
 async function loadPuzzle(idx, opts) {
+  // ADD3: ad-hoc puzzle (a reconstructed review position) — bypass PZ.list and
+  // run it through the tactical single-move check as a "guess the move" quiz.
+  if (opts && opts.adhoc) {
+    const p = opts.adhoc;
+    PZ.adhoc = p; PZ.quiz = !!opts.quiz; PZ.rxActive = false;
+    PZ.idx = -1; PZ.fails = 0; PZ.beginner = false; PZ.revealed = false; PZ.locked = false;
+    PZ.baseFen = p.fen; PZ.fen = p.fen; PZ.mateIn = 0; PZ.movesLeft = 0;
+    PZ.line = p.solution || []; PZ.played = []; PZ.theme = p.theme || "tactic";
+    PZ.sel = null; PZ.lastUci = null; PZ.hintSq = null; PZ.busy = false;
+    $("pzFeedback").textContent = ""; $("pzFeedback").className = "status";
+    try { PZ.legal = await api("/api/legal_fen", { fen: PZ.fen }); }
+    catch (e) { PZ.legal = { legal: {} }; }
+    renderPzBoard();
+    return;
+  }
+  PZ.adhoc = null; PZ.quiz = false;
+  if (!(opts && opts.rx)) PZ.rxActive = false;   // leaving a prescription session
   if (idx < 0 || idx >= PZ.list.length) return;
   PZ.idx = idx; PZ.cat = pzCatOf(idx);
   PZ.fails = 0;                     // reset wrong-attempt counter (auto-hint after 3)
@@ -2088,6 +2267,9 @@ async function pzUserMoveLine(uci) {
 }
 
 function pzSolved() {
+  // ADD3: ad-hoc quiz position solved → advance the guess-the-move session and
+  // stop (no PZ.list entry, no rating/streak/daily side effects).
+  if (PZ.adhoc) { PZ.adhoc = null; if (PZ.quiz) { PZ.quiz = false; return qzSolved(); } return; }
   const p = PZ.list[PZ.idx];
   const firstSolve = !PZ.solved.has(p.level);
   PZ.solved.add(p.level); pzSaveSolved(); renderPzGrid();
@@ -2132,6 +2314,10 @@ function pzSolved() {
       ? t("pz_solved_sub").replace("{n}", p.level).replace("{mate}", p.mateIn)
       : t("pz_solved_sub_tac").replace("{n}", p.level).replace("{theme}", t("pztheme_" + (p.theme || "tactic"))))
     + pzStreakSuffix();
+
+  // ADD6: inside a prescription session → advance to the next drill instead of
+  // the normal solved screen (rating/streak/quest were still awarded above).
+  if (PZ.rxActive) { rxAdvance(); return; }
 
   // Was this the last puzzle of its theme? If so, celebrate the theme and steer
   // the player toward another theme instead of clamping on the final puzzle.
@@ -2199,9 +2385,9 @@ function renderPzStreak() {
 }
 // show the next-move hint (used by the button AND auto after 3 wrong tries)
 async function pzShowHint() {
-  const p = PZ.list[PZ.idx];
+  const p = PZ.adhoc || PZ.list[PZ.idx];
   PZ.revealed = true;                                            // needed help → no rating gain on solve
-  if (p && typeof reviewAdd === "function") reviewAdd(p.level);   // needed help → schedule a review
+  if (p && p.level > 0 && typeof reviewAdd === "function") reviewAdd(p.level);   // needed help → schedule a review
   if (!p.mateIn) {                                   // tactical: hint the next move in the line
     PZ.hintSq = ((PZ.line[PZ.played.length] || p.solution[0] || "")).slice(0, 2);
     renderPzBoard(); return;
@@ -2223,7 +2409,7 @@ $("pzHint").onclick = async () => {
   setStatus("pzFeedback", t("pz_hint_fb"), false);
 };
 $("pzSolution").onclick = () => {
-  const p = PZ.list[PZ.idx];
+  const p = PZ.adhoc || PZ.list[PZ.idx];
   PZ.revealed = true;
   pzStreakReset();   // revealing the full answer breaks the streak
   setStatus("pzFeedback", t("pz_sol_fb") + (p.solutionSan || []).join(" "), false);
@@ -2818,7 +3004,7 @@ function ogEnd(result, reason, rInfo) {
   const movesCopy = [...OG.moves];
   const actions = [];
   if (movesCopy.length) {
-    const reviewReq = { moves: movesCopy, white, black, movetime: REVIEW_MT };
+    const reviewReq = { moves: movesCopy, white, black, movetime: REVIEW_MT, human: OG.color };
     prefetchAnalyze(reviewReq).catch(() => {});   // start analysis now → instant review
     actions.push({ label: t("ai_review_btn"), primary: true,
       onClick: () => runAnalyze(reviewReq, "ogStatus") });
@@ -3641,7 +3827,10 @@ function weaknessByTheme() {
   }
   return Object.keys(counts).map((theme) => ({ theme, n: counts[theme], cat: THEME_CAT[theme] })).sort((a, b) => b.n - a.n);
 }
-function practiceTheme(cat) { PZ.cat = cat; switchTab("puzzle"); loadPuzzle(pzCatRange(cat).start); }
+function practiceTheme(cat) {
+  if (typeof practiceThemeBand === "function") return practiceThemeBand(cat);
+  PZ.cat = cat; switchTab("puzzle"); loadPuzzle(pzCatRange(cat).start);
+}
 function renderWeakness() {
   const el = document.getElementById("weakReport"); if (!el) return;
   const w = weaknessByTheme();
