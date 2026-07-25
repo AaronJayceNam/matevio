@@ -317,9 +317,13 @@ function switchTab(name) {
     if (typeof updateOgAuthGate === "function") updateOgAuthGate();
   }
   if (section === "home" && typeof renderHome === "function") renderHome();
-  if (section === "puzzle" && typeof renderDaily === "function") renderDaily();
+  if (section === "puzzle") {
+    if (typeof renderDaily === "function") renderDaily();
+    // first time the puzzle tab opens: initialize the board now (deferred from boot)
+    if (PZ.list.length && !PZ.baseFen && typeof loadPuzzle === "function") loadPuzzle(PZ.bootIdx || 0);
+  }
   if (section === "growth" && typeof renderGrowth === "function") renderGrowth();
-  if (section === "ai" && typeof refreshDashboard === "function") refreshDashboard();
+  if (section === "ai") { if (typeof refreshDashboard === "function") refreshDashboard(); if (typeof ensureAiBoard === "function") ensureAiBoard(); }
   if (section === "analysis" && typeof initAnalysis === "function") initAnalysis();
   if (section === "review" && typeof maybeLoadLastReview === "function") maybeLoadLastReview();
 }
@@ -1795,7 +1799,11 @@ async function loadPuzzles() {
     renderDaily();
     let idx = PZ.list.findIndex((p) => !PZ.solved.has(p.level));  // resume at first unsolved
     if (idx < 0) idx = 0;
-    loadPuzzle(idx);
+    PZ.bootIdx = idx;
+    // Defer the board's /api/legal_fen call until the puzzle tab is actually
+    // opened — no need to hit the slow engine at boot for a hidden board.
+    const puzzleActive = document.getElementById("tab-puzzle") && document.getElementById("tab-puzzle").classList.contains("active");
+    if (puzzleActive) loadPuzzle(idx);
   } else { $("pzPrompt").textContent = t("pz_load_fail"); }
 }
 
@@ -2146,6 +2154,12 @@ async function aiBoot() {
   renderHistory();
   updateRankBadge();
   $("aiLevelLabel").textContent = aiLevelText($("aiLevel").value);
+  // AI board is initialized lazily when the 대국 tab opens (ensureAiBoard) — no
+  // need to hit /api/legal at boot for a hidden starting position.
+}
+// show the standard start position on the AI board the first time it's viewed
+async function ensureAiBoard() {
+  if (AIG.state || AIG.started) return;
   try { AIG.state = await api("/api/legal", { moves: [] }); renderAiBoard(); updateAiTurn(); }
   catch (e) { /* board stays empty until 새 대국 시작 */ }
 }
@@ -3881,7 +3895,8 @@ function opInit() {
 // boot
 aiBoot();
 authBoot();
-loadLeaderboard();
+// NB: leaderboard is loaded lazily when the 온라인 tab opens (switchTab), not at
+// boot — it's the slowest call (~850ms on 0.1 CPU) and needless on the home tab.
 opInit();
 
 // =========================================================================== //

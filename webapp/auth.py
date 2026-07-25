@@ -561,9 +561,16 @@ def register_auth(app: FastAPI) -> None:
             prog["rating"] = _rating_of(con, uid)
             return {"ok": True, "id": uid, "progress": prog}
 
+    # short cache: the board changes slowly, but reading + parsing every user's
+    # progress blob is the slowest call on the 0.1-CPU box (~850ms). 30s stale is fine.
+    _lb_cache = {"t": 0.0, "data": None}
+
     @app.get("/api/leaderboard")
     def leaderboard():
         """Registered accounts ranked by rating, puzzles solved and best streak."""
+        now = time.time()
+        if _lb_cache["data"] is not None and (now - _lb_cache["t"]) < 30.0:
+            return _lb_cache["data"]
         with _connect() as con:
             cur = con.cursor()
             cur.execute("SELECT id, progress, rating FROM users")
@@ -589,8 +596,10 @@ def register_auth(app: FastAPI) -> None:
                             key=lambda e: (-e["puzzles"], -e["pzStreakBest"]))[:20]
         by_streak = sorted([e for e in entries if e["pzStreakBest"] > 0],
                            key=lambda e: -e["pzStreakBest"])[:20]
-        return {"ok": True, "top": by_rating, "topPuzzles": by_puzzles,
-                "topStreak": by_streak, "total": len(entries)}
+        result = {"ok": True, "top": by_rating, "topPuzzles": by_puzzles,
+                  "topStreak": by_streak, "total": len(entries)}
+        _lb_cache["data"], _lb_cache["t"] = result, now
+        return result
 
     # ---- friends (⑧) ----
     @app.post("/api/friends/add")
