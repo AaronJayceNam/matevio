@@ -3326,7 +3326,7 @@ function clearLocalProgress() {
   ["cc_rating3", "cc_history", "cc_best_level", "cc_streak_best", "cc_pz_streak",
    "cc_pz_streak_best", "cc_puzzles_solved", "cc_achievements", "cc_daily_solved",
    "cc_freeze_dates", "cc_streak_miles", "cc_review_queue", "cc_xp", "cc_quests", "cc_skill",
-   "cc_pz_rating",
+   "cc_pz_rating", "cc_league",
   ].forEach((k) => localStorage.removeItem(k));
   if (typeof PZ !== "undefined") PZ.solved = new Set();
 }
@@ -3346,10 +3346,16 @@ function authClearSession() {
   if (typeof maybeShowLoginGate === "function") maybeShowLoginGate();
 }
 
-function authSetSession(id, token, progress) {
+function authSetSession(id, token, progress, opts) {
   AUTH.id = id; AUTH.token = token;
   if (typeof hideLoginGate === "function") hideLoginGate();
   localStorage.setItem("cc_token", token); localStorage.setItem("cc_uid", id);
+  // Switching INTO an account: wipe whatever the previous account / guest left in
+  // localStorage FIRST, so the max/union merge in applyProgress can't leak the old
+  // account's XP, streaks, puzzles, league, etc. into the new one. (Register passes
+  // keepLocal — the just-built guest progress is what's being uploaded and echoed
+  // back in `progress`, so there's nothing stale to clear.)
+  if (!(opts && opts.keepLocal) && typeof clearLocalProgress === "function") clearLocalProgress();
   applyProgress(progress);
   const nick = $("ogName"); if (nick) nick.value = id;   // nickname = account id
   renderAuthArea();
@@ -3398,7 +3404,9 @@ async function authSubmit(mode) {
       body = { id, pw, email, progress: prog };
     } else { body = { id, pw }; }
     const r = await api("/api/auth/" + mode, body);
-    authSetSession(r.id, r.token, r.progress);
+    // register keeps the guest progress it just uploaded; login replaces local
+    // wholesale so a previous account's data can't bleed into this one.
+    authSetSession(r.id, r.token, r.progress, { keepLocal: mode === "register" });
     $("authModal").classList.add("hidden");
     $("authPw").value = "";
     // show the recovery code to save ONLY when no email was given (email is the recovery path)
