@@ -1391,7 +1391,21 @@ async function aiStart() {
   setStatus("aiStatus", T("ai_start_msg").replace("{who}", who).replace("{side}", side));
   document.body.classList.add("ingame");     // immersive: board + opponent only
   renderAiBoard(); renderAiMoves(); updateAiTurn();
+  if (typeof maybeGuideFirstGame === "function") maybeGuideFirstGame();   // ADD1
   if (AIG.human === "b") await aiReply();   // AI (white) moves first
+}
+// ADD1: one-time coaching the very first time a player faces the AI — point them
+// at the hint + takeback safety nets so a first game feels winnable, not scary.
+function maybeGuideFirstGame() {
+  try {
+    if (localStorage.getItem("cc_guided_first") === "1") return;
+    const hist = (typeof gameHistory === "function") ? gameHistory() : [];
+    if (hist && hist.length > 1) return;   // not their first game
+    localStorage.setItem("cc_guided_first", "1");
+    if (typeof shareFlash === "function") setTimeout(() => shareFlash(t("guide_first_game")), 700);
+    const hb = $("aiHint");
+    if (hb) { hb.classList.add("pulse-hint"); setTimeout(() => hb.classList.remove("pulse-hint"), 6000); }
+  } catch (e) {}
 }
 
 // ---- ⑤ takeback + hint (AI games) ----
@@ -1600,21 +1614,63 @@ function pzCatRange(cat) {
   if (start < 0) { start = cat * 25; count = 25; }
   return { start, count };
 }
-// unlocked by INDEX: first puzzle of a category is always open; otherwise the
-// previous puzzle in the same category must be solved.
-function pzUnlocked(idx) {
-  const p = PZ.list[idx]; if (!p) return false;
-  const { start } = pzCatRange(pzCatOf(idx));
-  if (idx === start) return true;
-  const prev = PZ.list[idx - 1];
-  return !!(prev && PZ.solved.has(prev.level));
-}
+// FIX1: puzzles are no longer gated by a sequential unlock — every puzzle is
+// open and we steer the player to level-appropriate problems via the rating
+// band (pickAdaptivePuzzle). Kept as a function so existing call-sites still work.
+function pzUnlocked(idx) { return !!PZ.list[idx]; }
 
 function pzLoadSolved() {
   try { return new Set(JSON.parse(localStorage.getItem("cc_puzzles_solved") || "[]")); }
   catch (e) { return new Set(); }
 }
 function pzSaveSolved() { localStorage.setItem("cc_puzzles_solved", JSON.stringify([...PZ.solved])); authSchedulePush(); }
+
+// ---- ADAPTIVE puzzle rating (ADD2 / FIX1) ---------------------------------
+// A lightweight skill estimate JUST for puzzles, so we serve problems near the
+// player's level (rating band) instead of a fixed sequential ladder. Elo-lite:
+// seeded from onboarding skill / online rating, nudged up on a clean solve and
+// down when the player needed the answer.
+const PZ_RATING_DEFAULT = 800, PZ_BAND = 100, PZ_K = 28;
+function pzRatingGet() {
+  const v = +localStorage.getItem("cc_pz_rating");
+  if (v && v > 0) return v;
+  const online = +(localStorage.getItem("cc_rating3") || 0);
+  const skill = localStorage.getItem("cc_skill") || "";
+  let seed = PZ_RATING_DEFAULT;
+  if (online > 0) seed = 700 + online * 0.6;
+  else if (skill === "new") seed = 550; else if (skill === "beg") seed = 750;
+  else if (skill === "mid") seed = 1050; else if (skill === "adv") seed = 1400;
+  seed = Math.max(500, Math.min(1900, Math.round(seed)));
+  localStorage.setItem("cc_pz_rating", String(seed));
+  return seed;
+}
+function pzRatingSet(v) {
+  localStorage.setItem("cc_pz_rating", String(Math.max(400, Math.min(2200, Math.round(v)))));
+  if (typeof authSchedulePush === "function") authSchedulePush();
+}
+function pzExpected(myR, pR) { return 1 / (1 + Math.pow(10, ((pR || myR) - myR) / 400)); }
+function pzRatingUpdate(pRating, win) {
+  const my = pzRatingGet();
+  pzRatingSet(my + PZ_K * ((win ? 1 : 0) - pzExpected(my, pRating)));
+}
+// Pick the best UNSOLVED puzzle within the rating band (widen if empty); ties
+// broken by closeness to the target. All solved → allow a replay of the closest.
+function pickAdaptivePuzzle() {
+  if (!PZ.list || !PZ.list.length) return 0;
+  const my = pzRatingGet();
+  const rated = PZ.list.map((p, i) => ({ i, r: (typeof p.rating === "number" ? p.rating : my), solved: PZ.solved.has(p.level) }));
+  const unsolved = rated.filter((x) => !x.solved);
+  const pool = unsolved.length ? unsolved : rated;
+  let band = PZ_BAND, pick = null;
+  while (band <= 900 && !pick) {
+    const inB = pool.filter((x) => Math.abs(x.r - my) <= band);
+    if (inB.length) { inB.sort((a, b) => Math.abs(a.r - my) - Math.abs(b.r - my)); pick = inB[0]; }
+    band += 150;
+  }
+  if (!pick) { pool.sort((a, b) => Math.abs(a.r - my) - Math.abs(b.r - my)); pick = pool[0]; }
+  return pick ? pick.i : 0;
+}
+function loadAdaptivePuzzle() { loadPuzzle(pickAdaptivePuzzle(), { force: true }); }
 
 // =========================================================================== //
 // DAILY PUZZLE + STREAK CALENDAR — one puzzle a day (same for everyone, chosen
@@ -1801,7 +1857,7 @@ async function loadPuzzles() {
     renderPzGrid();
     renderPzStreak();
     renderDaily();
-    let idx = PZ.list.findIndex((p) => !PZ.solved.has(p.level));  // resume at first unsolved
+    let idx = pickAdaptivePuzzle();   // resume at a level-appropriate unsolved puzzle
     if (idx < 0) idx = 0;
     PZ.bootIdx = idx;
     // Defer the board's /api/legal_fen call until the puzzle tab is actually
@@ -1829,6 +1885,14 @@ function renderPzGrid() {
   }
   const solvedCount = PZ.list.filter((p) => PZ.solved.has(p.level)).length;
   $("pzProgress").textContent = t("pz_grid_progress").replace("{n}", solvedCount).replace("{total}", PZ.list.length);
+  renderPzRatingLine();
+}
+// show the player's adaptive puzzle rating + the band we're serving from (ADD2)
+function renderPzRatingLine() {
+  const el = document.getElementById("pzRatingLine"); if (!el) return;
+  if (typeof pzRatingGet !== "function") { el.textContent = ""; return; }
+  const r = pzRatingGet();
+  el.innerHTML = t("pz_rating_line").replace("{r}", r).replace("{lo}", Math.max(0, r - PZ_BAND)).replace("{hi}", r + PZ_BAND);
 }
 
 async function loadPuzzle(idx, opts) {
@@ -1836,6 +1900,7 @@ async function loadPuzzle(idx, opts) {
   PZ.idx = idx; PZ.cat = pzCatOf(idx);
   PZ.fails = 0;                     // reset wrong-attempt counter (auto-hint after 3)
   PZ.beginner = !!(opts && opts.beginner);   // rules-beginner first success → hint after 1 miss
+  PZ.revealed = false;                        // did the player need a hint/answer? (gates rating gain)
   document.querySelectorAll("#pzCats button").forEach((b) =>
     b.classList.toggle("active", +b.dataset.cat === PZ.cat));
   const p = PZ.list[idx];
@@ -2024,7 +2089,11 @@ async function pzUserMoveLine(uci) {
 
 function pzSolved() {
   const p = PZ.list[PZ.idx];
+  const firstSolve = !PZ.solved.has(p.level);
   PZ.solved.add(p.level); pzSaveSolved(); renderPzGrid();
+  // ADD2: move the adaptive puzzle rating — up on a clean solve, down if the
+  // player needed a hint/answer (only the first time each puzzle is decided).
+  if (firstSolve && typeof pzRatingUpdate === "function") pzRatingUpdate(p.rating, !PZ.revealed);
   pzStreakInc();   // consecutive-solve streak
   if (typeof reviewSolved === "function") reviewSolved(p.level);   // advance/graduate in the review queue
   if (typeof questBump === "function") questBump("puzzles");        // daily quest progress
@@ -2048,13 +2117,13 @@ function pzSolved() {
           sub: t("streak_mile_sub").replace("{n}", mile),
           badge: { small: t("streak_mile_badge"), text: "🔥 " + mile, master: mile >= 100 },
           actions: [
-            { label: t("daily_more_btn"), primary: true, onClick: () => loadPuzzle(pzCatRange(0).start) },
+            { label: t("daily_more_btn"), primary: true, onClick: () => loadAdaptivePuzzle() },
             { label: t("pz_theme_list_btn"), onClick: () => renderPzGrid() },
           ] }
       : { kind: "win", icon: "🗓️", title: t("daily_solved_title"),
           sub: t("daily_solved_sub").replace("{n}", streak),
           actions: [
-            { label: t("daily_more_btn"), primary: true, onClick: () => loadPuzzle(pzCatRange(0).start) },
+            { label: t("daily_more_btn"), primary: true, onClick: () => loadAdaptivePuzzle() },
             { label: t("pz_theme_list_btn"), onClick: () => renderPzGrid() },
           ] });
     return;
@@ -2090,7 +2159,7 @@ function pzSolved() {
   showResult({
     kind: "win", icon: "🏆", title: t("pz_solved_title"), sub,
     actions: [
-      { label: t("pz_next_btn"), primary: true, onClick: () => loadPuzzle(Math.min(PZ.list.length - 1, PZ.idx + 1)) },
+      { label: t("pz_next_btn"), primary: true, onClick: () => loadAdaptivePuzzle() },
       { label: t("pz_retry_btn"), onClick: () => loadPuzzle(PZ.idx) },
     ],
   });
@@ -2131,6 +2200,7 @@ function renderPzStreak() {
 // show the next-move hint (used by the button AND auto after 3 wrong tries)
 async function pzShowHint() {
   const p = PZ.list[PZ.idx];
+  PZ.revealed = true;                                            // needed help → no rating gain on solve
   if (p && typeof reviewAdd === "function") reviewAdd(p.level);   // needed help → schedule a review
   if (!p.mateIn) {                                   // tactical: hint the next move in the line
     PZ.hintSq = ((PZ.line[PZ.played.length] || p.solution[0] || "")).slice(0, 2);
@@ -2144,6 +2214,7 @@ async function pzShowHint() {
 document.querySelectorAll("#pzCats button").forEach((b) => {
   b.onclick = () => { PZ.cat = +b.dataset.cat; loadPuzzle(pzCatRange(PZ.cat).start); };
 });
+if ($("pzRecommend")) $("pzRecommend").onclick = () => loadAdaptivePuzzle();
 $("pzPrev").onclick = () => loadPuzzle(PZ.idx - 1);
 $("pzNext").onclick = () => loadPuzzle(PZ.idx + 1);
 $("pzReset").onclick = () => loadPuzzle(PZ.idx);
@@ -2153,6 +2224,7 @@ $("pzHint").onclick = async () => {
 };
 $("pzSolution").onclick = () => {
   const p = PZ.list[PZ.idx];
+  PZ.revealed = true;
   pzStreakReset();   // revealing the full answer breaks the streak
   setStatus("pzFeedback", t("pz_sol_fb") + (p.solutionSan || []).join(" "), false);
 };
@@ -2162,6 +2234,19 @@ async function aiBoot() {
   updateRatingChip();
   renderHistory();
   updateRankBadge();
+  // ADD1 (diagnostic): a brand-new player's first AI game defaults to a level
+  // calibrated from their onboarding skill / rating, not the generic default.
+  try {
+    const hist0 = (typeof gameHistory === "function") ? gameHistory() : [];
+    const solvedN0 = (typeof PZ !== "undefined" && PZ.solved) ? PZ.solved.size : 0;
+    if ((!hist0 || !hist0.length) && !solvedN0 && localStorage.getItem("cc_ailevel_touched") !== "1") {
+      const seed = (typeof pzRatingGet === "function") ? pzRatingGet() : ((typeof myRating === "function") ? myRating() : 400);
+      const lv = aiLevelForRating(seed);
+      const sel = $("aiLevel"); if (sel) sel.value = String(lv);
+    }
+  } catch (e) {}
+  const _al = $("aiLevel");
+  if (_al) _al.addEventListener("change", () => localStorage.setItem("cc_ailevel_touched", "1"));
   $("aiLevelLabel").textContent = aiLevelText($("aiLevel").value);
   // AI board is initialized lazily when the 대국 tab opens (ensureAiBoard) — no
   // need to hit /api/legal at boot for a hidden starting position.
@@ -2929,6 +3014,7 @@ function collectProgress() {
     streakMiles: (typeof streakMilesReached === "function") ? streakMilesReached() : [],
     reviewQueue: (typeof reviewQueue === "function") ? reviewQueue() : {},
     xp: (typeof xpGet === "function") ? xpGet() : 0,
+    pzRating: (typeof pzRatingGet === "function") ? pzRatingGet() : 0,
   };
 }
 
@@ -2963,6 +3049,7 @@ function applyProgress(p) {
     localStorage.setItem("cc_streak_miles", JSON.stringify([...new Set([...cur, ...p.streakMiles])].sort((a, b) => a - b)));
   }
   if (typeof p.xp === "number") localStorage.setItem("cc_xp", String(Math.max(p.xp, (typeof xpGet === "function") ? xpGet() : 0)));
+  if (typeof p.pzRating === "number" && p.pzRating > 0) localStorage.setItem("cc_pz_rating", String(Math.round(p.pzRating)));
   if (p.reviewQueue && typeof p.reviewQueue === "object") {   // merge review queue (keep more-graduated box)
     const cur = (typeof reviewQueue === "function") ? reviewQueue() : {};
     const merged = { ...cur };
@@ -2994,6 +3081,7 @@ function clearLocalProgress() {
   ["cc_rating3", "cc_history", "cc_best_level", "cc_streak_best", "cc_pz_streak",
    "cc_pz_streak_best", "cc_puzzles_solved", "cc_achievements", "cc_daily_solved",
    "cc_freeze_dates", "cc_streak_miles", "cc_review_queue", "cc_xp", "cc_quests", "cc_skill",
+   "cc_pz_rating",
   ].forEach((k) => localStorage.removeItem(k));
   if (typeof PZ !== "undefined") PZ.solved = new Set();
 }
@@ -4388,7 +4476,7 @@ function pickToday() {
   let unsolved = -1;
   try { if (PZ && PZ.list) unsolved = PZ.list.findIndex((p) => !PZ.solved.has(p.level)); } catch (e) {}
   if (unsolved >= 0) {
-    return { ic: "🧩", label: T("today_puzzle"), sub: T("today_puzzle_s"), go: () => { switchTab("puzzle"); loadPuzzle(unsolved); } };
+    return { ic: "🧩", label: T("today_puzzle"), sub: T("today_puzzle_s"), go: () => { switchTab("puzzle"); loadAdaptivePuzzle(); } };
   }
   // 4) fall back to a fresh game vs AI
   return { ic: "🤖", label: T("today_ai"), sub: T("today_ai_s"), go: () => switchTab("ai") };

@@ -312,6 +312,18 @@ input[type=range]{ accent-color:var(--accent); }
   72%{transform:translateX(5px)} 84%{transform:translateX(-2px)} }
 .shake{ animation:shakeX .5s; }
 .pz-cats{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+.pz-recommend{ display:block; width:100%; margin:0 0 8px; padding:12px 14px; border:none; border-radius:12px;
+  background:linear-gradient(180deg,var(--accent2),var(--accent)); color:#fff; font-weight:800; font-size:14px;
+  cursor:pointer; box-shadow:0 6px 16px -8px var(--accent); transition:transform .1s ease, box-shadow .2s ease; }
+.pz-recommend:hover{ transform:translateY(-1px); box-shadow:0 8px 20px -8px var(--accent); }
+.pz-recommend:active{ transform:translateY(0); }
+.pz-rating-line{ font-size:12px; color:var(--muted); text-align:center; margin:0 0 12px; }
+.pz-rating-line b{ color:var(--ink); font-variant-numeric:tabular-nums; }
+.pz-rating-line:empty{ display:none; }
+/* ADD1: draw attention to the hint button during the guided first game */
+@keyframes pulseHint{ 0%,100%{ box-shadow:0 0 0 0 rgba(79,184,119,.5); } 50%{ box-shadow:0 0 0 7px rgba(79,184,119,0); } }
+.pulse-hint{ animation:pulseHint 1.3s ease-in-out infinite; border-color:var(--accent)!important; }
+@media (prefers-reduced-motion: reduce){ .pulse-hint{ animation:none; } }
 .pz-cats button{ flex:1; min-width:84px; background:var(--elevated); color:var(--muted);
   border:1px solid var(--line2); border-radius:10px; padding:8px 6px; font-size:13px; cursor:pointer; }
 .pz-cats button.active{ background:var(--accent); color:#fff; border-color:transparent; font-weight:700; }
