@@ -437,7 +437,7 @@ class Trident:
 # HTTP endpoints (stateless engine access — used by the hotseat client; the
 # online lobby keeps authoritative state server-side and calls the engine directly)
 # --------------------------------------------------------------------------- #
-def register_trident(app) -> None:
+try:                                     # module-level so FastAPI can resolve it
     from pydantic import BaseModel
 
     class TMove(BaseModel):
@@ -445,7 +445,11 @@ def register_trident(app) -> None:
         turn: int
         frm: int
         to: int
+except ImportError:                      # engine + self-test import without pydantic
+    TMove = None
 
+
+def register_trident(app) -> None:
     def _state(g):
         d = g.to_dict()
         d["ok"] = True
