@@ -1390,6 +1390,23 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 .hub-resume .ht-txt b{ font-size:15px; font-weight:800; line-height:1.2; }
 .hub-resume .ht-sub{ font-size:12px; color:var(--muted); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .hub-resume .ht-go{ flex:0 0 auto; font-size:18px; color:var(--muted); }
+/* FEAT6: Rivals */
+#rivalsCard .rv2-head{ margin-bottom:10px; }
+#rivalsCard .rv2-list{ display:flex; flex-direction:column; gap:7px; }
+#rivalsCard .rv2-row{ display:flex; align-items:center; gap:10px; }
+#rivalsCard .rv2-ava{ flex:0 0 auto; width:30px; height:30px; border-radius:var(--r-pill); background:var(--elevated);
+  display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; }
+#rivalsCard .rv2-name{ flex:1; font-size:var(--fs-sm); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#rivalsCard .rv2-rec{ flex:0 0 auto; font-weight:800; font-variant-numeric:tabular-nums; font-size:var(--fs-sm); }
+#rivalsCard .rv2-rec.win{ color:var(--accent); } #rivalsCard .rv2-rec.loss{ color:var(--bad); } #rivalsCard .rv2-rec.even{ color:var(--muted); }
+/* FEAT8: Chess Personality */
+#personalityCard .pers-head{ margin-bottom:10px; }
+#personalityCard .pers-body{ display:flex; align-items:center; gap:14px; margin-bottom:10px; }
+#personalityCard .pers-emoji{ font-size:40px; flex:0 0 auto; }
+#personalityCard .pers-txt{ display:flex; flex-direction:column; }
+#personalityCard .pers-txt b{ font-size:var(--fs-md); }
+#personalityCard .pers-txt span{ font-size:var(--fs-sm); color:var(--muted); }
+#personalityCard .pers-share{ font-size:var(--fs-sm); }
 /* FEAT1: Blunder Deck */
 .blunder-deck{ margin:0 0 12px; }
 .blunder-deck .bd-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }

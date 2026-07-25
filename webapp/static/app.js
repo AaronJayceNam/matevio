@@ -1272,6 +1272,69 @@ function renderStudyPath() {
   el.querySelectorAll(".sp-row").forEach((row) => { row.onclick = () => studyGo(STUDY_MODS[+row.dataset.spi]); });
 }
 
+// =========================================================================== //
+// FEAT6: RIVALS TRACKER (라이벌) — opponents you've faced 3+ times become a
+// head-to-head card, turning anonymous games into an ongoing story. Pure
+// aggregate over the local game history.
+// =========================================================================== //
+function rivalStats() {
+  const hist = (typeof gameHistory === "function") ? gameHistory() : [];
+  const map = {};
+  for (const g of hist) {
+    const opp = (g.opponent || "").trim(); if (!opp) continue;
+    const m = map[opp] || (map[opp] = { opp, n: 0, w: 0, l: 0, d: 0, last: null, mode: g.mode });
+    m.n++;
+    if (g.result === "win") m.w++; else if (g.result === "loss") m.l++; else m.d++;
+    m.last = g.result;
+  }
+  return Object.values(map).filter((m) => m.n >= 3).sort((a, b) => b.n - a.n).slice(0, 4);
+}
+function renderRivals() {
+  const el = document.getElementById("rivalsCard"); if (!el) return;
+  const rivals = rivalStats();
+  if (!rivals.length) { el.hidden = true; return; }
+  el.hidden = false;
+  const T = (typeof t === "function") ? t : ((k) => k);
+  el.innerHTML =
+    '<div class="rv2-head"><b>⚔️ ' + T("rivals_title") + "</b></div>" +
+    '<div class="rv2-list">' + rivals.map((r) => {
+      const dominant = r.w > r.l ? "win" : (r.l > r.w ? "loss" : "even");
+      return '<div class="rv2-row"><span class="rv2-ava">' + escapeHtml(String(r.opp).charAt(0).toUpperCase()) + "</span>" +
+        '<span class="rv2-name">' + escapeHtml(r.opp) + "</span>" +
+        '<span class="rv2-rec ' + dominant + '">' + r.w + "·" + r.l + "·" + r.d + "</span></div>";
+    }).join("") + "</div>";
+}
+
+// =========================================================================== //
+// FEAT8: CHESS PERSONALITY (체스 성향) — an MBTI-style playstyle profile derived
+// from stored stats, with a shareable card. Refreshes as your play evolves.
+// =========================================================================== //
+function chessPersonality() {
+  const attack = (typeof studyThemeSolved === "function") ? (studyThemeSolved(0) + studyThemeSolved(1) + studyThemeSolved(4)) : 0;
+  const defense = (typeof studyThemeSolved === "function") ? (studyThemeSolved(2) + studyThemeSolved(3) + studyThemeSolved(5)) : 0;
+  const hist = (typeof gameHistory === "function") ? gameHistory() : [];
+  const games = hist.length;
+  const blunders = (typeof blunderCards === "function") ? blunderCards().length : 0;
+  const axis1 = attack >= defense ? "atk" : "def";
+  const bold = games > 0 ? (blunders / games) >= 0.5 : (attack >= defense);   // takes risks
+  const axis2 = bold ? "bold" : "calm";
+  return { type: axis1 + "_" + axis2, axis1, axis2, attack, defense };
+}
+function renderPersonality() {
+  const el = document.getElementById("personalityCard"); if (!el) return;
+  el.hidden = false;
+  const T = (typeof t === "function") ? t : ((k) => k);
+  const p = chessPersonality();
+  const emoji = { atk_bold: "⚔️", atk_calm: "🎯", def_bold: "🛡️", def_calm: "🧱" }[p.type] || "♟️";
+  el.innerHTML =
+    '<div class="pers-head"><b>🧬 ' + T("pers_title") + "</b></div>" +
+    '<div class="pers-body"><span class="pers-emoji">' + emoji + "</span>" +
+      '<div class="pers-txt"><b>' + T("pers_" + p.type) + "</b><span>" + T("pers_d_" + p.type) + "</span></div></div>" +
+    '<button class="ghost pers-share" id="persShareBtn">📤 ' + T("card_share") + "</button>";
+  const b = document.getElementById("persShareBtn");
+  if (b) b.onclick = () => { if (typeof shareResultCard === "function") shareResultCard({ icon: emoji, title: T("pers_" + p.type), sub: "Matevio 체스 성향" }); };
+}
+
 // ---- coach ----
 // ---- coach voice (Web Speech API — free, on-device, follows app language) ----
 const TTS_LANG = { ko: "ko-KR", en: "en-US", ja: "ja-JP", zh: "zh-CN", es: "es-ES" };
@@ -4261,6 +4324,8 @@ function renderJourney() {
 
 function renderGrowth() {
   if (typeof renderProfilePanel === "function") renderProfilePanel();   // ADD2/ADD5
+  if (typeof renderPersonality === "function") renderPersonality();     // FEAT8
+  if (typeof renderRivals === "function") renderRivals();               // FEAT6
   if (typeof renderStudyPath === "function") renderStudyPath();         // FEAT5
   if (typeof renderJourney === "function") renderJourney();             // ADD8
   if (typeof renderLeague === "function") renderLeague();

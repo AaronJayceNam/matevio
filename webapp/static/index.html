@@ -18,7 +18,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=124">
+<link rel="stylesheet" href="/static/style.css?v=125">
 </head>
 <body>
 
@@ -504,6 +504,9 @@
     <button class="primary" data-goto="puzzle" data-i18n="empty_growth_cta">🧩 첫 퍼즐 풀기</button>
   </div>
   <div class="growth-wrap">
+    <!-- FEAT8: chess personality + FEAT6: rivals -->
+    <div class="card" id="personalityCard" hidden></div>
+    <div class="card" id="rivalsCard" hidden></div>
     <!-- FEAT5: study path curriculum -->
     <div class="card" id="studyPath"></div>
     <!-- ADD8: the improvement journey — weakness → puzzles → learn → drills -->
@@ -833,8 +836,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=124"></script>
-<script src="/static/app.js?v=124"></script>
+<script src="/static/i18n.js?v=125"></script>
+<script src="/static/app.js?v=125"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {
