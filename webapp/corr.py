@@ -64,12 +64,12 @@ class SwissReq(BaseModel):
 
 
 def _uid_for(token: str):
+    # _user_for_token returns the user-id STRING (or None) — use it directly.
     if not token:
         return None
     try:
         with _connect() as con:
-            row = _user_for_token(con, token)
-            return row[0] if row else None
+            return _user_for_token(con, token)
     except Exception:
         return None
 

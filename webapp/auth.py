@@ -712,8 +712,7 @@ def register_auth(app: FastAPI) -> None:
         if req.token:
             try:
                 with _connect() as con:
-                    row = _user_for_token(con, req.token)
-                    uid = row[0] if row else None
+                    uid = _user_for_token(con, req.token)   # returns the id string
             except Exception:
                 uid = None
         try:
@@ -738,9 +737,9 @@ def register_auth(app: FastAPI) -> None:
         if req.token:
             try:
                 with _connect() as con:
-                    row = _user_for_token(con, req.token)
-                    if row:
-                        pid, name = row[0], row[0]
+                    _u = _user_for_token(con, req.token)   # returns the id string
+                    if _u:
+                        pid, name = _u, _u
             except Exception:
                 pid = None
         if pid is None:
