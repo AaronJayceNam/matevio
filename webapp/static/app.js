@@ -3308,6 +3308,12 @@ function applyProgress(p) {
   if (typeof renderAchievements === "function") renderAchievements();
   if (typeof renderDaily === "function") renderDaily();
   if (PZ.list.length) renderPzGrid();
+  // Refresh every progress-driven view so a freshly loaded account's numbers
+  // (home hub stats, XP/quests/league, growth report) replace the old account's
+  // on screen immediately — not just in storage.
+  if (typeof renderHome === "function") renderHome();
+  if (typeof renderGrowth === "function") renderGrowth();
+  if (typeof renderPzRatingLine === "function") renderPzRatingLine();
 }
 
 function authSchedulePush() {
