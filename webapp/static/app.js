@@ -298,6 +298,24 @@ function scrollListToActive(list) {
 // --------------------------------------------------------------------------- //
 // tabs
 // --------------------------------------------------------------------------- //
+// FIX2: the mobile bottom-nav is generated from the desktop top tabs, so tab
+// structure (which tabs, order, icons) is authored in ONE place. Short mobile
+// labels come from the navs_* keys; applyLang keeps both bars translated.
+function renderBottomNav() {
+  const bot = document.getElementById("bottomNav"); if (!bot) return;
+  const T = (typeof t === "function") ? t : ((k) => k);
+  const shortKey = { home: "navs_home", play: "navs_play", puzzle: "navs_puzzle", learn: "navs_learn", my: "navs_my" };
+  const btns = [...document.querySelectorAll(".tabs > button[data-tab]")];
+  bot.innerHTML = btns.map((b) => {
+    const tab = b.dataset.tab;
+    const icEl = b.querySelector(".ti");
+    const ic = icEl ? icEl.textContent : "";
+    const k = shortKey[tab] || "";
+    return `<button data-tab="${tab}"${b.classList.contains("active") ? ' class="active"' : ""}>` +
+      `<span class="bi">${ic}</span><span class="bl" data-i18n="${k}">${T(k)}</span></button>`;
+  }).join("");
+}
+renderBottomNav();
 // Both the desktop top-tabs and the mobile bottom-nav use [data-tab] buttons.
 document.querySelectorAll("[data-tab]").forEach((b) => {
   b.onclick = () => switchTab(b.dataset.tab);
@@ -319,8 +337,20 @@ const MY_SECTIONS = ["growth", "review", "analysis"];
 
 function switchTab(name) {
   exitImmersive(); hideResult();              // leaving into a browse tab always exits immersive
+  // FIX4: 대국 lands straight on the last-used play mode (AI by default) instead of
+  // a separate picker screen; the inline AI/온라인 switcher handles mode changes.
+  if (name === "play") name = localStorage.getItem("cc_lastplay") || "ai";
   // resolve the section to actually show (virtual "my" tab lands on 성장)
   const section = (name === "my") ? "growth" : name;
+  if (section === "ai" || section === "online") {
+    try { localStorage.setItem("cc_lastplay", section); } catch (e) {}
+    document.querySelectorAll("[data-pswitch]").forEach((b) =>
+      b.classList.toggle("on", b.dataset.pswitch === section));
+  }
+  if (section === "review" || section === "analysis") {   // FIX1: sync the depth toggle
+    document.querySelectorAll("[data-revswitch]").forEach((b) =>
+      b.classList.toggle("on", b.dataset.revswitch === section));
+  }
   const navName = TAB_GROUP[section] || section;   // which top-level nav button lights up
   if (section !== "review" && typeof coachStopSpeak === "function") coachStopSpeak();  // stop the coach voice
   document.querySelectorAll("[data-tab]").forEach((b) =>
@@ -350,7 +380,10 @@ function switchTab(name) {
 // [data-mynav] placeholder at the top of each of the three sections.
 function renderMySubnav(active) {
   const T = (typeof t === "function") ? t : ((k) => k);
-  const items = [["growth", "📈", T("nav_growth")], ["review", "📊", T("my_review")], ["analysis", "🔬", T("my_analysis")]];
+  // FIX1: 복기 and 분석 are one review destination now (a depth toggle lives inside
+  // it), so the sub-nav is just 성장 / 복기; 분석 highlights 복기.
+  if (active === "analysis") active = "review";
+  const items = [["growth", "📈", T("nav_growth")], ["review", "📊", T("my_review")]];
   const html = items.map((it) =>
     '<button class="myseg' + (it[0] === active ? " on" : "") + '" data-seg="' + it[0] + '">' + it[1] + " " + it[2] + "</button>").join("");
   document.querySelectorAll("[data-mynav]").forEach((el) => {
@@ -359,6 +392,18 @@ function renderMySubnav(active) {
   });
 }
 
+// FIX4: inline AI/온라인 switcher at the top of both play sections
+document.querySelectorAll("[data-pswitch]").forEach((b) => {
+  b.onclick = () => {
+    const mode = b.dataset.pswitch;
+    if (mode === "ai") { switchTab("ai"); }
+    else { switchTab("online"); }
+  };
+});
+// FIX1: 복기 ⇄ 자유 분석 depth switcher (review + analysis are one destination)
+document.querySelectorAll("[data-revswitch]").forEach((b) => {
+  b.onclick = () => switchTab(b.dataset.revswitch);
+});
 // "대국" hub → route each mode to the underlying section (kept intact)
 document.querySelectorAll("#playPicker .play-mode").forEach((b) => {
   b.onclick = () => {

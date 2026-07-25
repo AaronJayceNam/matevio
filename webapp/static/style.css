@@ -1387,6 +1387,13 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 .hub-resume .ht-txt b{ font-size:15px; font-weight:800; line-height:1.2; }
 .hub-resume .ht-sub{ font-size:12px; color:var(--muted); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .hub-resume .ht-go{ flex:0 0 auto; font-size:18px; color:var(--muted); }
+/* FIX4: inline AI/온라인 segmented switcher at the top of the play sections */
+.play-switch{ display:flex; gap:4px; padding:4px; margin:0 0 14px; background:var(--panel2);
+  border:1px solid var(--line); border-radius:var(--r-pill); }
+.play-switch button{ flex:1; border:none; background:transparent; color:var(--muted); cursor:pointer;
+  font-weight:800; font-size:var(--fs-sm); padding:9px 10px; border-radius:var(--r-pill); transition:.15s; min-height:40px; }
+.play-switch button.on{ background:linear-gradient(180deg,var(--accent2),var(--accent)); color:#08130c; box-shadow:0 4px 12px -6px var(--accent); }
+body.ingame .play-switch{ display:none; }
 /* ADD7: cold-start warming banner — fixed, non-blocking, above the bottom nav */
 .warm-banner{ position:fixed; left:50%; transform:translateX(-50%); bottom:80px; z-index:60;
   max-width:calc(100vw - 24px); padding:9px 15px; border-radius:var(--r-pill); font-size:12.5px; font-weight:600;

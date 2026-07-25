@@ -18,7 +18,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=120">
+<link rel="stylesheet" href="/static/style.css?v=121">
 </head>
 <body>
 
@@ -91,14 +91,8 @@
   <div class="side-tip" id="sideTip"><b data-i18n="tip_title">💡 오늘의 팁</b><br><span data-i18n="tip_body">기물을 잃지 않으려면 매 수마다 “상대가 나를 잡을 수 있나?”를 먼저 확인하세요.</span></div>
 </div>
 
-<!-- mobile bottom navigation (top chess-app pattern) -->
-<nav class="bottomnav">
-  <button data-tab="home" class="active"><span class="bi">🏠</span><span class="bl" data-i18n="navs_home">홈</span></button>
-  <button data-tab="play"><span class="bi">♟️</span><span class="bl" data-i18n="navs_play">대국</span></button>
-  <button data-tab="puzzle"><span class="bi">🧩</span><span class="bl" data-i18n="navs_puzzle">퍼즐</span></button>
-  <button data-tab="learn"><span class="bi">📖</span><span class="bl" data-i18n="navs_learn">배우기</span></button>
-  <button data-tab="my"><span class="bi">👤</span><span class="bl" data-i18n="navs_my">나</span></button>
-</nav>
+<!-- mobile bottom navigation — generated from the top tabs (FIX2: single source) -->
+<nav class="bottomnav" id="bottomNav"></nav>
 
 <main class="content">
 
@@ -137,6 +131,10 @@
 
 <!-- ====================== 온라인 대국 ====================== -->
 <section class="tab" id="tab-online">
+  <div class="play-switch" data-pswitch-bar>
+    <button data-pswitch="ai" data-i18n="pswitch_ai">🤖 AI 대국</button>
+    <button data-pswitch="online" data-i18n="pswitch_online">🌐 온라인</button>
+  </div>
   <div class="hero"><div class="hero-txt"><h2 data-i18n="hero_online_t">온라인 대국</h2><p data-i18n="hero_online_p">전 세계 플레이어와 실시간 레이팅 대국. 10분 대국 · 초대 코드로 친구와도.</p></div><svg class="hero-art" viewBox="0 0 160 120" fill="none" aria-hidden="true">
     <circle cx="80" cy="60" r="40" fill="#fff" opacity=".13"/><circle cx="80" cy="60" r="40" stroke="#fff" stroke-width="3"/>
     <ellipse cx="80" cy="60" rx="16" ry="40" stroke="#fff" stroke-width="2.5" opacity=".85"/>
@@ -338,6 +336,10 @@
 
 <!-- ====================== AI와 대국 ====================== -->
 <section class="tab" id="tab-ai">
+  <div class="play-switch" data-pswitch-bar>
+    <button data-pswitch="ai" data-i18n="pswitch_ai">🤖 AI 대국</button>
+    <button data-pswitch="online" data-i18n="pswitch_online">🌐 온라인</button>
+  </div>
   <div class="hero"><div class="hero-txt"><h2 data-i18n="hero_ai_t">AI와 대국</h2><p data-i18n="hero_ai_p">난이도 1~15, 유명 선수 스타일까지 — 스톡피시 엔진과 겨뤄보세요. 대국이 끝나면 자동으로 AI가 복기해줍니다.</p></div><svg class="hero-art" viewBox="0 0 160 120" fill="none" aria-hidden="true">
     <g opacity=".16" fill="#fff"><rect x="6" y="84" width="14" height="14"/><rect x="20" y="70" width="14" height="14"/><rect x="34" y="84" width="14" height="14"/></g>
     <line x1="104" y1="18" x2="104" y2="34" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="104" cy="13" r="5" fill="var(--c-gold-hi)"/>
@@ -528,6 +530,10 @@
 <!-- ====================== REVIEW ====================== -->
 <section class="tab" id="tab-review">
   <div class="my-subnav" data-mynav></div>
+  <div class="play-switch" data-revswitch-bar>
+    <button data-revswitch="review" data-i18n="rev_depth_review">📋 대국 복기</button>
+    <button data-revswitch="analysis" data-i18n="rev_depth_analysis">🔬 자유 분석</button>
+  </div>
   <div class="empty-state" id="rvEmpty">
     <svg class="es-art" viewBox="0 0 200 150" fill="none" aria-hidden="true">
       <rect x="34" y="22" width="104" height="104" rx="10" fill="#f4f6ec" stroke="#dbe2ea" stroke-width="2"/>
@@ -605,6 +611,10 @@
 <!-- ====================== 분석 보드 (Analysis board) ====================== -->
 <section class="tab" id="tab-analysis">
   <div class="my-subnav" data-mynav></div>
+  <div class="play-switch" data-revswitch-bar>
+    <button data-revswitch="review" data-i18n="rev_depth_review">📋 대국 복기</button>
+    <button data-revswitch="analysis" data-i18n="rev_depth_analysis">🔬 자유 분석</button>
+  </div>
   <div class="hero"><div class="hero-txt"><h2 data-i18n="an_title">분석 보드</h2><p data-i18n="an_desc">양쪽 아무 수나 자유롭게 두면서 엔진의 평가와 추천 수를 실시간으로 확인하세요.</p></div></div>
   <div class="cols">
     <div>
@@ -803,8 +813,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=120"></script>
-<script src="/static/app.js?v=120"></script>
+<script src="/static/i18n.js?v=121"></script>
+<script src="/static/app.js?v=121"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {
