@@ -3442,8 +3442,10 @@ function authSetSession(id, token, progress, opts) {
 function renderAuthArea() {
   const el = $("authArea"); if (!el) return;
   if (AUTH.token) {
-    el.innerHTML = `<span class="user-chip">👤 <b>${escapeHtml(AUTH.id || "")}</b></span>` +
+    // ADD1: the identity chip doubles as the entry to the settings/identity hub
+    el.innerHTML = `<button class="user-chip" id="userChip" title="${t("tt_settings")}">👤 <b>${escapeHtml(AUTH.id || "")}</b></button>` +
       `<button class="ghost" id="authLogout">${t("auth_logout")}</button>`;
+    if ($("userChip")) $("userChip").onclick = () => { const s = $("settingsBtn"); if (s) s.click(); };
     $("authLogout").onclick = async () => {
       try { await api("/api/auth/logout", { token: AUTH.token }); } catch (e) {}
       authClearSession();
@@ -3948,8 +3950,58 @@ function currentStreak() {
   return { kind: first, n };
 }
 
+// ADD2 + ADD5: profile identity + one progression ladder (rating / puzzle rating /
+// XP level / league tier / best AI level as views of one advancement story).
+function renderProfilePanel() {
+  const el = document.getElementById("profilePanel"); if (!el) return;
+  const T = (typeof t === "function") ? t : ((k) => k);
+  const id = (AUTH && AUTH.id) ? AUTH.id : T("profile_guest");
+  const lv = (typeof xpLevel === "function") ? xpLevel(xpGet()) : 1;
+  const rating = (typeof myRating === "function") ? myRating() : 0;
+  const pzR = (typeof pzRatingGet === "function") ? pzRatingGet() : 0;
+  const lg = (typeof leagueGet === "function" && typeof leagueTierOf === "function") ? leagueTierOf(leagueGet().points) : null;
+  const best = (typeof bestLevel === "function") ? bestLevel() : 0;
+  const meters = [
+    { ic: "♟️", label: T("prog_rating"), val: rating },
+    { ic: "🧩", label: T("prog_pzrating"), val: pzR },
+    { ic: "⭐", label: T("prog_xp"), val: "Lv " + lv },
+    { ic: lg ? lg.ic : "🏆", label: T("prog_league"), val: lg ? T("league_" + lg.key) : "-" },
+    { ic: "🤖", label: T("prog_ailevel"), val: best > 0 ? ("Lv " + best) : "-" },
+  ];
+  el.innerHTML =
+    '<div class="pp-head"><span class="pp-ava">' + escapeHtml(String(id).charAt(0).toUpperCase()) + "</span>" +
+      '<div class="pp-id"><b>' + escapeHtml(id) + "</b><span>" + T("profile_level").replace("{n}", lv) + "</span></div></div>" +
+    '<div class="pp-ladder">' + meters.map((m) =>
+      '<div class="pp-meter"><span class="pp-m-ic">' + m.ic + '</span><span class="pp-m-val">' + m.val +
+      '</span><span class="pp-m-lbl">' + m.label + "</span></div>").join("") + "</div>";
+}
+// ADD8: the improvement journey — chain weakness → puzzles → learn → drills into
+// one visible weekly path so the isolated tools read as a followable loop.
+function renderJourney() {
+  const el = document.getElementById("journeyCard"); if (!el) return;
+  const T = (typeof t === "function") ? t : ((k) => k);
+  const weak = (typeof weaknessByTheme === "function") ? weaknessByTheme() : [];
+  const top = weak[0] || null;
+  const themeName = top ? T("pztheme_" + top.theme) : T("journey_any");
+  const steps = [
+    { ic: "🎯", label: T("journey_s1").replace("{theme}", themeName), go: () => { const w = document.getElementById("weakCard"); if (w) w.scrollIntoView({ behavior: "smooth", block: "center" }); } },
+    { ic: "🧩", label: T("journey_s2"), go: () => { if (top && typeof practiceThemeBand === "function") practiceThemeBand(top.cat); else { switchTab("puzzle"); if (typeof loadAdaptivePuzzle === "function") loadAdaptivePuzzle(); } } },
+    { ic: "📖", label: T("journey_s3"), go: () => { switchTab("learn"); if (top && typeof showLearn === "function") { try { showLearn(top.theme); } catch (e) {} } } },
+    { ic: "🩺", label: T("journey_s4"), go: () => { switchTab("review"); } },
+  ];
+  el.innerHTML =
+    '<div class="jr-head"><b>🚀 ' + T("journey_title") + '</b><span class="jr-sub">' + T("journey_sub") + "</span></div>" +
+    '<div class="jr-steps">' + steps.map((s, i) =>
+      '<button class="jr-step" data-jstep="' + i + '"><span class="jr-n">' + (i + 1) + '</span><span class="jr-ic">' + s.ic +
+      '</span><span class="jr-lbl">' + s.label + "</span></button>" +
+      (i < steps.length - 1 ? '<span class="jr-arrow">→</span>' : "")).join("") + "</div>";
+  el.querySelectorAll(".jr-step").forEach((b, i) => { b.onclick = steps[i].go; });
+}
+
 function renderGrowth() {
-  if (typeof renderLeague === "function") renderLeague();   // ADD8
+  if (typeof renderProfilePanel === "function") renderProfilePanel();   // ADD2/ADD5
+  if (typeof renderJourney === "function") renderJourney();             // ADD8
+  if (typeof renderLeague === "function") renderLeague();
   renderWeakness();
   renderGoal();
   renderAchievements();
@@ -4146,6 +4198,17 @@ $("settingsBtn").onclick = () => {
   $("setBoard").value = SETTINGS.boardTheme;
   const row = $("setAccountRow"); if (row) row.style.display = (AUTH && AUTH.token) ? "flex" : "none";
   $("settingsModal").classList.remove("hidden");
+};
+// ADD1: re-openable install / notify entry (the first-success soft-ask is one-shot)
+if ($("setInstallBtn")) $("setInstallBtn").onclick = async () => {
+  const standalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+  if (window.__pwaPrompt && window.__pwaDeferred) { try { await window.__pwaPrompt(); } catch (e) {} }
+  else if (!standalone) { alert(typeof t === "function" ? t("install_hint") : "브라우저 메뉴에서 ‘홈 화면에 추가’로 설치할 수 있어요."); }
+  // also offer notifications if not yet enabled
+  if (("Notification" in window) && Notification.permission === "default" && typeof setReminder === "function") {
+    const tog = $("setRemind"); if (tog) tog.checked = true;
+    try { await setReminder(true); } catch (e) {}
+  }
 };
 $("setDeleteBtn").onclick = async () => {
   if (!AUTH || !AUTH.token) return;
@@ -5043,6 +5106,32 @@ function nextTodoAction(skipIcons) {
   } catch (e) { return null; }
 }
 
+// ADD4: first-run 3-step checklist (규칙 → 첫 퍼즐 → 첫 대국) — shown only to a
+// brand-new user, with ticks that fill as each step is completed.
+function renderStarter() {
+  const el = document.getElementById("hubStarter"); if (!el) return;
+  const T = (typeof t === "function") ? t : ((k) => k);
+  const hist = (typeof gameHistory === "function") ? gameHistory() : [];
+  const solved = (typeof PZ !== "undefined" && PZ.solved) ? PZ.solved.size : 0;
+  const brandNew = (!hist || !hist.length) && solved === 0 && localStorage.getItem("cc_starter_done") !== "1";
+  if (!brandNew) { el.hidden = true; return; }
+  const learned = localStorage.getItem("cc_starter_learn") === "1";
+  const steps = [
+    { done: learned, ic: "📖", label: T("start_s1"), go: () => { localStorage.setItem("cc_starter_learn", "1"); switchTab("learn"); } },
+    { done: solved > 0, ic: "🧩", label: T("start_s2"), go: () => { switchTab("puzzle"); if (typeof loadAdaptivePuzzle === "function") loadAdaptivePuzzle(); } },
+    { done: hist.length > 0, ic: "🤖", label: T("start_s3"), go: () => { switchTab("ai"); } },
+  ];
+  if (steps.every((s) => s.done)) { localStorage.setItem("cc_starter_done", "1"); el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML =
+    '<div class="st-head"><b>🌱 ' + T("start_title") + '</b><span class="st-sub">' + T("start_sub") + "</span></div>" +
+    '<div class="st-list">' + steps.map((s, i) =>
+      '<button class="st-step' + (s.done ? " done" : "") + '" data-ststep="' + i + '">' +
+      '<span class="st-ck">' + (s.done ? "✅" : (i + 1)) + '</span><span class="st-ic">' + s.ic +
+      '</span><span class="st-lbl">' + s.label + "</span></button>").join("") + "</div>";
+  el.querySelectorAll(".st-step").forEach((b, i) => { b.onclick = steps[i].go; });
+}
+
 function renderHubToday() {
   const el = document.getElementById("hubToday"); if (!el) return;
   const a = pickToday();
@@ -5119,6 +5208,7 @@ function renderXp() {
 function renderHome() {
   const T = (typeof t === "function") ? t : ((k) => k);
   renderResume();
+  renderStarter();
   renderHubToday();
   renderQuests();
   renderXp();

@@ -29,9 +29,12 @@
   /* FIX6: the brand colors most duplicated as inline hex — centralized here (same
      values, so no visual change) so banners/badges theme from one place. */
   --c-gold-hi:#ffd968; --c-line-green:#2f7d4d; --c-txt-green:#d7f2e2;
-  /* board (kept classic) */
+  /* board (kept classic) — ADD6: one token set every board (play/puzzle/review/
+     analysis/learn) references, so highlights can never drift between surfaces. */
   --light:#ebecd0;
   --dark:#6f9350;
+  --bd-sel:rgba(255,196,54,.95); --bd-sel-glow:rgba(255,196,54,.35);
+  --bd-last:rgba(255,213,74,.48); --bd-check:rgba(224,65,63,.85); --bd-dot:rgba(0,0,0,.28);
   --radius:16px;
   /* FIX5: design-token scales (spacing / radius / type) so new work snaps to a
      rhythm instead of ad-hoc px. Legacy one-offs migrate opportunistically. */
@@ -197,10 +200,10 @@ input[type=range]{ accent-color:var(--accent); }
   font-size:calc(var(--board)/11); line-height:1; cursor:pointer; transition:box-shadow .1s; }
 .sq.light{ background:var(--light); }
 .sq.dark{ background:var(--dark); }
-.sq.sel, .sq.dnd-from{ box-shadow:inset 0 0 0 5px rgba(255,196,54,.95), inset 0 0 20px rgba(255,196,54,.35); }
+.sq.sel, .sq.dnd-from{ box-shadow:inset 0 0 0 5px var(--bd-sel), inset 0 0 20px var(--bd-sel-glow); }
 .sq.sel .pc{ transform:scale(1.08); }
-.sq.last{ background-image:linear-gradient(rgba(255,213,74,.48),rgba(255,213,74,.48)); }
-.sq.check{ box-shadow:inset 0 0 22px 4px rgba(224,65,63,.85); }
+.sq.last{ background-image:linear-gradient(var(--bd-last),var(--bd-last)); }
+.sq.check{ box-shadow:inset 0 0 22px 4px var(--bd-check); }
 .sq.dnd-target::after{ content:""; position:absolute; inset:0; pointer-events:none; border-radius:2px;
   box-shadow:inset 0 0 0 4px rgba(63,157,99,.8); }
 .pc{ transition:transform .05s; font-variant-emoji:text; }  /* keep chess glyphs as text, not emoji (iOS) */
@@ -1387,6 +1390,51 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 .hub-resume .ht-txt b{ font-size:15px; font-weight:800; line-height:1.2; }
 .hub-resume .ht-sub{ font-size:12px; color:var(--muted); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .hub-resume .ht-go{ flex:0 0 auto; font-size:18px; color:var(--muted); }
+/* ADD4: first-run starter checklist on the home hub */
+.hub-starter{ background:var(--panel2); border:1px solid var(--line); border-radius:var(--r-lg); padding:14px 16px; margin:0 0 14px; }
+.hub-starter .st-head{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.hub-starter .st-head b{ font-size:var(--fs-md); }
+.hub-starter .st-sub{ font-size:var(--fs-xs); color:var(--muted); }
+.hub-starter .st-list{ display:flex; flex-direction:column; gap:8px; }
+.hub-starter .st-step{ display:flex; align-items:center; gap:11px; width:100%; text-align:left; cursor:pointer;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:var(--r-md); padding:11px 13px; min-height:44px; transition:.15s; }
+.hub-starter .st-step:hover{ border-color:var(--accent); }
+.hub-starter .st-step.done{ opacity:.6; }
+.hub-starter .st-step.done .st-lbl{ text-decoration:line-through; }
+.hub-starter .st-ck{ flex:0 0 auto; width:24px; height:24px; border-radius:var(--r-pill); background:var(--elevated);
+  display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; }
+.hub-starter .st-step.done .st-ck{ background:transparent; }
+.hub-starter .st-ic{ font-size:18px; flex:0 0 auto; }
+.hub-starter .st-lbl{ font-size:var(--fs-sm); font-weight:700; }
+/* ADD2 + ADD5: profile identity + progression ladder */
+.profile-panel{ margin:0 0 14px; }
+.profile-panel .pp-head{ display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+.profile-panel .pp-ava{ flex:0 0 auto; width:46px; height:46px; border-radius:var(--r-pill); font-size:20px; font-weight:900;
+  display:flex; align-items:center; justify-content:center; color:#08130c; background:linear-gradient(150deg,var(--accent2),var(--accent-deep)); }
+.profile-panel .pp-id{ display:flex; flex-direction:column; }
+.profile-panel .pp-id b{ font-size:var(--fs-md); }
+.profile-panel .pp-id span{ font-size:var(--fs-sm); color:var(--muted); }
+.profile-panel .pp-ladder{ display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
+.profile-panel .pp-meter{ display:flex; flex-direction:column; align-items:center; gap:2px; padding:9px 4px;
+  background:var(--panel2); border:1px solid var(--line); border-radius:var(--r-md); text-align:center; }
+.profile-panel .pp-m-ic{ font-size:16px; }
+.profile-panel .pp-m-val{ font-size:14px; font-weight:900; font-variant-numeric:tabular-nums; }
+.profile-panel .pp-m-lbl{ font-size:10px; color:var(--muted); }
+@media (max-width:520px){ .profile-panel .pp-m-lbl{ font-size:9px; } .profile-panel .pp-ladder{ gap:5px; } }
+/* ADD8: improvement journey */
+#journeyCard .jr-head{ display:flex; flex-direction:column; gap:2px; margin-bottom:12px; }
+#journeyCard .jr-head b{ font-size:var(--fs-md); }
+#journeyCard .jr-sub{ font-size:var(--fs-sm); color:var(--muted); }
+#journeyCard .jr-steps{ display:flex; align-items:stretch; gap:6px; overflow-x:auto; padding-bottom:4px; }
+#journeyCard .jr-step{ flex:1 1 0; min-width:92px; display:flex; flex-direction:column; align-items:center; gap:4px;
+  cursor:pointer; border:1px solid var(--line); background:var(--panel2); color:var(--ink); border-radius:var(--r-md); padding:11px 7px; transition:.15s; }
+#journeyCard .jr-step:hover{ border-color:var(--accent); transform:translateY(-1px); }
+#journeyCard .jr-n{ width:20px; height:20px; border-radius:var(--r-pill); background:var(--accent); color:#08130c;
+  display:flex; align-items:center; justify-content:center; font-weight:900; font-size:11px; }
+#journeyCard .jr-ic{ font-size:20px; }
+#journeyCard .jr-lbl{ font-size:11px; font-weight:700; text-align:center; line-height:1.25; }
+#journeyCard .jr-arrow{ flex:0 0 auto; align-self:center; color:var(--faint); font-weight:900; }
+button.user-chip{ cursor:pointer; font:inherit; line-height:1.2; }
 /* FIX4: inline AI/온라인 segmented switcher at the top of the play sections */
 .play-switch{ display:flex; gap:4px; padding:4px; margin:0 0 14px; background:var(--panel2);
   border:1px solid var(--line); border-radius:var(--r-pill); }

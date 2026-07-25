@@ -18,7 +18,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=121">
+<link rel="stylesheet" href="/static/style.css?v=122">
 </head>
 <body>
 
@@ -107,6 +107,8 @@
   <button class="hub-resume" id="hubResume" hidden></button>
   <!-- FIX3: the single prioritized action leads; stats/XP demoted below it -->
   <button class="hub-today" id="hubToday" hidden></button>
+  <!-- ADD4: 3-step starter checklist for brand-new users -->
+  <div class="hub-starter" id="hubStarter" hidden></div>
   <div class="hub-quests" id="hubQuests"></div>
   <div class="hub-xp" id="hubXp"></div>
   <div class="hub-stats" id="hubStats"></div>
@@ -486,6 +488,8 @@
     <circle cx="64" cy="70" r="3.5" fill="var(--c-gold-hi)"/><circle cx="100" cy="54" r="3.5" fill="var(--c-gold-hi)"/><circle cx="118" cy="44" r="5" fill="var(--c-gold-hi)"/>
     <path d="M108 16h20v6a10 10 0 0 1-20 0z" fill="var(--c-gold-hi)"/><rect x="116" y="26" width="4" height="7" fill="var(--c-gold-hi)"/><rect x="109" y="33" width="18" height="3" rx="1.5" fill="var(--c-gold-hi)"/>
   </svg></div>
+  <!-- ADD2 + ADD5: profile identity + one progression ladder -->
+  <div class="profile-panel card" id="profilePanel"></div>
   <!-- FIX10: friendly empty state for brand-new users with no activity yet -->
   <div class="my-empty card" id="growthEmpty" hidden>
     <div class="my-empty-ic">🌱</div>
@@ -494,6 +498,8 @@
     <button class="primary" data-goto="puzzle" data-i18n="empty_growth_cta">🧩 첫 퍼즐 풀기</button>
   </div>
   <div class="growth-wrap">
+    <!-- ADD8: the improvement journey — weakness → puzzles → learn → drills -->
+    <div class="card" id="journeyCard"></div>
     <div class="card" id="leagueCardWrap">
       <h3 data-i18n="gr_league">🏆 주간 리그</h3>
       <div id="leagueCard"></div>
@@ -706,8 +712,13 @@
       <span><b data-i18n="set_del_label">계정 삭제</b><br><span class="setdesc" data-i18n="set_del_desc">계정과 서버에 저장된 모든 데이터(레이팅·기록·퍼즐)를 영구 삭제합니다. 되돌릴 수 없습니다.</span></span>
       <button class="ghost" id="setDeleteBtn" data-i18n="set_del_btn" style="color:#c62828;border-color:#e6b0b0;white-space:nowrap;flex:0 0 auto">계정 삭제</button>
     </label>
-    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--line);font-size:13px">
+    <label class="setrow">
+      <span><b data-i18n="set_install_label">홈 화면에 추가 · 알림</b><br><span class="setdesc" data-i18n="set_install_desc">앱을 설치하고 매일 퍼즐 알림을 받아 스트릭을 지켜요.</span></span>
+      <button class="ghost" id="setInstallBtn" data-i18n="set_install_btn" style="white-space:nowrap;flex:0 0 auto">📲 설치</button>
+    </label>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--line);font-size:13px;display:flex;gap:16px;flex-wrap:wrap">
       <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy" style="color:var(--accent-deep);text-decoration:none">개인정보 처리방침</a>
+      <a href="/terms" target="_blank" rel="noopener" data-i18n="set_terms" style="color:var(--accent-deep);text-decoration:none">이용약관</a>
     </div>
     <details class="oss-notice" style="margin-top:12px;font-size:12px;color:var(--muted)">
       <summary data-i18n="oss_title" style="cursor:pointer;font-weight:700;color:var(--ink)">오픈소스 라이선스</summary>
@@ -813,8 +824,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=121"></script>
-<script src="/static/app.js?v=121"></script>
+<script src="/static/i18n.js?v=122"></script>
+<script src="/static/app.js?v=122"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {
