@@ -364,8 +364,8 @@ input[type=range]{ accent-color:var(--accent); }
 /* promotion picker */
 .promo{ position:absolute; z-index:60; background:var(--panel2); border-radius:10px;
   box-shadow:0 12px 30px rgba(0,0,0,.6); display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--line2); }
-.promo div{ font-size:34px; padding:6px 12px; cursor:pointer; color:var(--ink); transition:background .1s; }
-.promo div:hover{ background:#242b35; }
+.promo div{ font-size:34px; padding:6px 12px; cursor:pointer; color:var(--ink); transition:background .1s; border-radius:6px; }
+.promo div:hover{ background:rgba(127,140,160,.28); }
 
 /* ============================================================
    ONLINE MATCH

@@ -406,10 +406,13 @@ function promoChooser(boardEl, isWhite, cb) {
   closePromo();
   const picker = document.createElement("div");
   picker.className = "promo"; picker.id = "promoPicker";
+  // pieces keep their real colour via .pc.w / .pc.b; light popup bg for the black
+  // side so dark pieces stay visible (the old hardcoded #111 made white pieces black)
+  if (!isWhite) picker.style.background = "#e9edf2";
   ["q", "r", "b", "n"].forEach((p) => {
     const d = document.createElement("div");
     d.className = "pc " + (isWhite ? "w" : "b");
-    d.textContent = GLYPH[p]; d.style.color = "#111";
+    d.textContent = GLYPH[p];
     d.onclick = () => { closePromo(); cb(p); };
     picker.appendChild(d);
   });
@@ -2978,11 +2981,25 @@ function authSchedulePush() {
   }, 800);
 }
 
+// Wipe all per-account progress from this device so the NEXT account (or guest)
+// starts clean — otherwise the previous user's XP/streaks/puzzles leak in via the
+// cross-device merge logic in applyProgress.
+function clearLocalProgress() {
+  ["cc_rating3", "cc_history", "cc_best_level", "cc_streak_best", "cc_pz_streak",
+   "cc_pz_streak_best", "cc_puzzles_solved", "cc_achievements", "cc_daily_solved",
+   "cc_freeze_dates", "cc_streak_miles", "cc_review_queue", "cc_xp", "cc_quests", "cc_skill",
+  ].forEach((k) => localStorage.removeItem(k));
+  if (typeof PZ !== "undefined") PZ.solved = new Set();
+}
 function authClearSession() {
   AUTH.token = null; AUTH.id = null;
   localStorage.removeItem("cc_token"); localStorage.removeItem("cc_uid");
+  clearLocalProgress();                       // fresh slate for the next user
   renderAuthArea();
   updateRatingChip();
+  if (typeof renderHistory === "function") renderHistory();
+  if (typeof renderHome === "function") renderHome();
+  if (typeof PZ !== "undefined" && PZ.list && PZ.list.length && typeof renderPzGrid === "function") renderPzGrid();
   if (typeof updateOgAuthGate === "function") updateOgAuthGate();
   // now signed out — offer the login gate again (clear the "guest this session"
   // suppression so it actually reappears after an explicit logout).
