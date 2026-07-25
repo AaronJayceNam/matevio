@@ -3,19 +3,37 @@
 // --------------------------------------------------------------------------- //
 // helpers
 // --------------------------------------------------------------------------- //
-async function api(path, body) {
-  const res = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  if (!res.ok) {
-    let msg = res.statusText;
-    try { msg = (await res.json()).detail || msg; } catch (e) {}
-    throw new Error(msg);
-  }
-  return res.json();
+// ADD7 (feedback): the Render free tier sleeps when idle, so the FIRST server call
+// after a nap can take many seconds. Track in-flight calls and, if any is slow,
+// show a non-blocking "서버 깨우는 중" banner so a slow response reads as loading,
+// not as a freeze. Fast calls (the common case) never trigger it.
+let _apiInflight = 0, _warmTimer = null;
+function _apiStart() {
+  _apiInflight++;
+  if (!_warmTimer) _warmTimer = setTimeout(() => { if (_apiInflight > 0 && typeof showWarming === "function") showWarming(); }, 4500);
 }
+function _apiEnd() {
+  _apiInflight = Math.max(0, _apiInflight - 1);
+  if (_apiInflight === 0) { clearTimeout(_warmTimer); _warmTimer = null; if (typeof hideWarming === "function") hideWarming(); }
+}
+async function api(path, body) {
+  _apiStart();
+  try {
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    if (!res.ok) {
+      let msg = res.statusText;
+      try { msg = (await res.json()).detail || msg; } catch (e) {}
+      throw new Error(msg);
+    }
+    return await res.json();
+  } finally { _apiEnd(); }
+}
+function showWarming() { const el = document.getElementById("warmBanner"); if (el) { el.textContent = (typeof t === "function") ? t("warming_msg") : "서버 깨우는 중…"; el.classList.remove("hidden"); } }
+function hideWarming() { const el = document.getElementById("warmBanner"); if (el) el.classList.add("hidden"); }
 const $ = (id) => document.getElementById(id);
 // Trailing ︎ = text-presentation selector: forces iOS/Safari to render the
 // chess symbols as TEXT (so our .pc.w/.pc.b CSS colors apply) instead of as
@@ -1562,6 +1580,8 @@ function aiEndGame() {
     actions.push({ label: T("ai_review_btn"), primary: true, onClick: () => runAnalyze(reviewReq) });
   }
   actions.push({ label: T("ai_again_btn"), onClick: () => aiStart() });
+  const _nextAi = (typeof nextTodoAction === "function") ? nextTodoAction(["📊"]) : null;   // ADD9 (skip if it'd dup 복기)
+  if (_nextAi) actions.push(_nextAi);
   actions.push({ label: T("card_share"), onClick: () => shareResultCard({
     icon: kind === "win" ? "🏆" : kind === "loss" ? "😢" : "🤝",
     title: kind === "win" ? T("res_win") : kind === "loss" ? T("res_loss") : T("res_draw"),
@@ -1599,6 +1619,7 @@ async function aiStart() {
   const side = AIG.human === "w" ? T("side_white") : T("side_black");
   setStatus("aiStatus", T("ai_start_msg").replace("{who}", who).replace("{side}", side));
   document.body.classList.add("ingame");     // immersive: board + opponent only
+  if (typeof setResume === "function") setResume({ kind: "ai" });   // ADD3 continuity
   renderAiBoard(); renderAiMoves(); updateAiTurn();
   if (typeof maybeGuideFirstGame === "function") maybeGuideFirstGame();   // ADD1
   if (AIG.human === "b") await aiReply();   // AI (white) moves first
@@ -2127,6 +2148,7 @@ async function loadPuzzle(idx, opts) {
   PZ.fails = 0;                     // reset wrong-attempt counter (auto-hint after 3)
   PZ.beginner = !!(opts && opts.beginner);   // rules-beginner first success → hint after 1 miss
   PZ.revealed = false;                        // did the player need a hint/answer? (gates rating gain)
+  if (typeof setResume === "function") setResume({ kind: "puzzle", idx });   // ADD3 continuity
   document.querySelectorAll("#pzCats button").forEach((b) =>
     b.classList.toggle("active", +b.dataset.cat === PZ.cat));
   const p = PZ.list[idx];
@@ -2622,6 +2644,7 @@ function renderLearnBoard(cfg) {
 
 function showLearn(topic) {
   const cfg = learnTopic(topic);
+  if (typeof setResume === "function") setResume({ kind: "learn", topic });   // ADD3 continuity
   renderLearnBoard(cfg);
   $("learnTitle").textContent = cfg.title;
   $("learnDesc").innerHTML = cfg.desc;
@@ -3068,6 +3091,8 @@ function ogEnd(result, reason, rInfo) {
       onClick: () => runAnalyze(reviewReq, "ogStatus") });
   }
   actions.push({ label: t("og_new_match"), onClick: ogReset });
+  const _nextOg = (typeof nextTodoAction === "function") ? nextTodoAction(["📊"]) : null;   // ADD9
+  if (_nextOg) actions.push(_nextOg);
   actions.push({ label: t("card_share"), onClick: () => shareResultCard({
     icon: kind === "win" ? "🏆" : kind === "loss" ? "😢" : "🤝",
     title: kind === "win" ? t("res_win") : kind === "loss" ? t("res_loss") : t("res_draw"),
@@ -4926,6 +4951,53 @@ function pickToday() {
   // 4) fall back to a fresh game vs AI
   return { ic: "🤖", label: T("today_ai"), sub: T("today_ai_s"), go: () => switchTab("ai") };
 }
+// ---- ADD3: "이어서 하기" — remember the last place the user was actively working
+// so a returning session is one tap away, instead of re-navigating the whole tree.
+function setResume(obj) {
+  try { localStorage.setItem("cc_resume", JSON.stringify({ ...obj, ts: Date.now() })); } catch (e) {}
+}
+function getResume() {
+  try {
+    const r = JSON.parse(localStorage.getItem("cc_resume") || "null");
+    if (!r || !r.ts || (Date.now() - r.ts) > 3 * 24 * 3600 * 1000) return null;   // stale after 3 days
+    return r;
+  } catch (e) { return null; }
+}
+function renderResume() {
+  const el = document.getElementById("hubResume"); if (!el) return;
+  const r = getResume();
+  if (!r) { el.hidden = true; return; }
+  let ic = "▶", label = "", sub = "", go = null;
+  if (r.kind === "puzzle" && typeof loadPuzzle === "function") {
+    ic = "🧩"; label = t("resume_puzzle"); sub = t("resume_puzzle_s");
+    go = () => { switchTab("puzzle"); const idx = (typeof r.idx === "number") ? r.idx : 0; loadPuzzle(idx, { force: true }); };
+  } else if (r.kind === "ai") {
+    ic = "🤖"; label = t("resume_ai"); sub = t("resume_ai_s");
+    go = () => { switchTab("ai"); };
+  } else if (r.kind === "learn") {
+    ic = "📖"; label = t("resume_learn"); sub = t("resume_learn_s");
+    go = () => { switchTab("learn"); if (r.topic && typeof showLearn === "function") try { showLearn(r.topic); } catch (e) {} };
+  } else { el.hidden = true; return; }
+  el.innerHTML =
+    '<span class="ht-ic">' + ic + "</span>" +
+    '<span class="ht-txt"><span class="ht-k">' + t("resume_kicker") + '</span>' +
+      '<b>' + label + "</b><span class='ht-sub'>" + sub + "</span></span>" +
+    '<span class="ht-go">↩</span>';
+  el.hidden = false;
+  el.onclick = go;
+}
+
+// ADD9: a "다음 할 일" action for result screens — reuses pickToday's prioritization
+// so a finished game/puzzle never dead-ends. Returns null when the natural next step
+// is already offered on that screen (passed in `skipIcons`).
+function nextTodoAction(skipIcons) {
+  try {
+    const a = pickToday();
+    if (skipIcons && skipIcons.indexOf(a.ic) >= 0) return null;
+    return { label: "➡ " + a.label, onClick: () => { if (typeof hideResult === "function") hideResult(); a.go(); } };
+  } catch (e) { return null; }
+}
+
 function renderHubToday() {
   const el = document.getElementById("hubToday"); if (!el) return;
   const a = pickToday();
@@ -5001,6 +5073,7 @@ function renderXp() {
 
 function renderHome() {
   const T = (typeof t === "function") ? t : ((k) => k);
+  renderResume();
   renderHubToday();
   renderQuests();
   renderXp();

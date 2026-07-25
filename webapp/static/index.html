@@ -18,7 +18,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=118">
+<link rel="stylesheet" href="/static/style.css?v=119">
 </head>
 <body>
 
@@ -52,6 +52,9 @@
   <button id="softAskLater" data-i18n="softask_later" style="border:none;background:transparent;color:#9fc4ae;font-size:12px;cursor:pointer">나중에</button>
   <button id="softAskClose" aria-label="닫기" data-i18n-aria="tt_close" style="border:none;background:transparent;font-size:17px;line-height:1;cursor:pointer;color:#d7f2e2">×</button>
 </div>
+
+<!-- ADD7: cold-start "server waking up" banner (shown only when a call is slow) -->
+<div id="warmBanner" class="warm-banner hidden">서버 깨우는 중…</div>
 
 <!-- ADD4 + FIX6: landing overlay for share / referral / puzzle-challenge links -->
 <div id="landingModal" class="landing-modal hidden">
@@ -106,10 +109,13 @@
     <h2 id="hubHello">Matevio</h2>
     <p data-i18n="hub_sub">한 판 두고, 퍼즐 풀고, 복기하며 실력을 키워보세요.</p>
   </div>
-  <div class="hub-stats" id="hubStats"></div>
-  <div class="hub-xp" id="hubXp"></div>
+  <!-- ADD3: continue where you left off (shown only when there is something) -->
+  <button class="hub-resume" id="hubResume" hidden></button>
+  <!-- FIX3: the single prioritized action leads; stats/XP demoted below it -->
   <button class="hub-today" id="hubToday" hidden></button>
   <div class="hub-quests" id="hubQuests"></div>
+  <div class="hub-xp" id="hubXp"></div>
+  <div class="hub-stats" id="hubStats"></div>
   <div class="hub-grid">
     <div class="hub-actions" id="hubActions"></div>
     <div class="hub-cards" id="hubCards"></div>
@@ -797,8 +803,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=118"></script>
-<script src="/static/app.js?v=118"></script>
+<script src="/static/i18n.js?v=119"></script>
+<script src="/static/app.js?v=119"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {

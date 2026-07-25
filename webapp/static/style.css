@@ -1367,6 +1367,24 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 .hub-today .ht-sub{ font-size:12.5px; font-weight:600; opacity:.82; line-height:1.35;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .hub-today .ht-go{ flex:0 0 auto; font-size:16px; font-weight:900; opacity:.8; }
+/* ADD3: resume strip — mirrors hub-today shape but a quieter "continue" surface */
+.hub-resume{ display:flex; align-items:center; gap:14px; width:100%; text-align:left; cursor:pointer;
+  border:1px solid var(--line2); border-radius:16px; padding:13px 16px; margin:0 0 12px;
+  background:var(--panel2); color:var(--ink); transition:transform .1s ease, border-color .15s ease; }
+.hub-resume:hover{ transform:translateY(-1px); border-color:var(--accent); }
+.hub-resume .ht-ic{ font-size:26px; line-height:1; flex:0 0 auto; }
+.hub-resume .ht-txt{ flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.hub-resume .ht-k{ font-size:10.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); }
+.hub-resume .ht-txt b{ font-size:15px; font-weight:800; line-height:1.2; }
+.hub-resume .ht-sub{ font-size:12px; color:var(--muted); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hub-resume .ht-go{ flex:0 0 auto; font-size:18px; color:var(--muted); }
+/* ADD7: cold-start warming banner — fixed, non-blocking, above the bottom nav */
+.warm-banner{ position:fixed; left:50%; transform:translateX(-50%); bottom:80px; z-index:60;
+  max-width:calc(100vw - 24px); padding:9px 15px; border-radius:999px; font-size:12.5px; font-weight:600;
+  background:rgba(20,26,20,.96); color:#d7f2e2; border:1px solid #2f7d4d; box-shadow:0 10px 28px -10px rgba(0,0,0,.7);
+  text-align:center; line-height:1.4; }
+.warm-banner.hidden{ display:none; }
+@media (min-width:761px){ .warm-banner{ bottom:24px; } }
 
 /* ---- home XP / level bar (v-xp) ---- */
 .hub-xp{ margin:0 0 14px; }
