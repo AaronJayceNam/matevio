@@ -18,7 +18,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=128">
+<link rel="stylesheet" href="/static/style.css?v=129">
 </head>
 <body>
 
@@ -63,6 +63,15 @@
     <p class="setdesc" data-i18n="boss_modal_s" style="margin:0 0 12px">보스를 하나씩 무찌르고 다음 보스를 해금하세요.</p>
     <div class="boss-grid" id="bossGrid"></div>
     <div class="auth-actions" style="margin-top:14px"><button class="ghost" id="bossClose" data-i18n="landing_skip">닫기</button></div>
+  </div>
+</div>
+
+<!-- MODE5: Daily Puzzle Arena leaderboard -->
+<div class="overlay hidden" id="arenaModal">
+  <div class="auth-box">
+    <h2 data-i18n="arena_board_t">🏆 오늘의 아레나 랭킹</h2>
+    <div class="arena-list" id="arenaList"></div>
+    <div class="auth-actions" style="margin-top:14px"><button class="ghost" id="arenaClose" data-i18n="landing_skip">닫기</button></div>
   </div>
 </div>
 
@@ -502,6 +511,7 @@
         <div id="pzDaily" class="pz-daily"></div>
         <button class="pz-recommend" id="pzRecommend" data-i18n="pz_recommend">🎯 내 레벨 맞춤 퍼즐</button>
         <button class="pz-storm" id="pzStormBtn" data-i18n="storm_start">⚡ 폭풍 퍼즐 (3분)</button>
+        <button class="pz-arena" id="pzArenaBtn" data-i18n="arena_start">🏆 일일 아레나 — 오늘의 5문제 랭킹</button>
         <div class="pz-rating-line" id="pzRatingLine"></div>
         <div class="pz-cats" id="pzCats">
           <button data-cat="0" class="active" data-i18n="pz_c1">♚ 메이트</button>
@@ -870,8 +880,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=128"></script>
-<script src="/static/app.js?v=128"></script>
+<script src="/static/i18n.js?v=129"></script>
+<script src="/static/app.js?v=129"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {

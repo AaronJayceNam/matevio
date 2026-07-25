@@ -256,6 +256,15 @@ def _init_db() -> None:
             ref TEXT,
             uid TEXT,
             ts TEXT)""")
+        # MODE5: Daily Puzzle Arena — everyone gets the same 5 puzzles per day,
+        # ranked by total time (ms). One best score per (day, player).
+        cur.execute("""CREATE TABLE IF NOT EXISTS arena (
+            day TEXT NOT NULL,
+            pid TEXT NOT NULL,
+            name TEXT,
+            ms INTEGER NOT NULL,
+            ts TEXT,
+            PRIMARY KEY (day, pid))""")
         # server-authoritative rating column (added by migration on old DBs)
         if _IS_PG:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS rating INTEGER")
@@ -459,6 +468,14 @@ class FriendRequest(BaseModel):
 class MetricRequest(BaseModel):
     event: str
     ref: str | None = None
+    token: str | None = None
+
+
+class ArenaRequest(BaseModel):
+    day: str
+    ms: int | None = None          # None → just fetch the board (no submit)
+    name: str | None = None
+    ref: str | None = None         # anonymous client id for guests
     token: str | None = None
 
 
@@ -709,6 +726,57 @@ def register_auth(app: FastAPI) -> None:
         except Exception:
             return {"ok": False}
         return {"ok": True}
+
+    # MODE5: Daily Puzzle Arena — submit today's total time and read the ranked board.
+    @app.post("/api/arena")
+    def arena(req: ArenaRequest):
+        day = (req.day or "")[:10]
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", day):
+            return {"ok": False}
+        # identify the player: account id if logged in, else the anon ref
+        pid, name = None, (req.name or "게스트")[:20]
+        if req.token:
+            try:
+                with _connect() as con:
+                    row = _user_for_token(con, req.token)
+                    if row:
+                        pid, name = row[0], row[0]
+            except Exception:
+                pid = None
+        if pid is None:
+            pid = ("g:" + (req.ref or ""))[:42] if req.ref else None
+        try:
+            with _connect() as con:
+                cur = con.cursor()
+                # submit (keep the best/lowest ms for this player+day)
+                if req.ms is not None and pid:
+                    ms = max(0, min(3_600_000, int(req.ms)))
+                    if _IS_PG:
+                        cur.execute(
+                            "INSERT INTO arena (day, pid, name, ms, ts) VALUES (%s,%s,%s,%s,%s) "
+                            "ON CONFLICT (day, pid) DO UPDATE SET name=EXCLUDED.name, ms=LEAST(arena.ms, EXCLUDED.ms), ts=EXCLUDED.ts",
+                            (day, pid, name, ms, _now()))
+                    else:
+                        cur.execute(
+                            "INSERT INTO arena (day, pid, name, ms, ts) VALUES (?,?,?,?,?) "
+                            "ON CONFLICT(day, pid) DO UPDATE SET name=excluded.name, ms=MIN(arena.ms, excluded.ms), ts=excluded.ts",
+                            (day, pid, name, ms, _now()))
+                    con.commit()
+                # read the board
+                cur.execute(f"SELECT name, ms FROM arena WHERE day = {_ph()} ORDER BY ms ASC LIMIT 20", (day,))
+                rows = cur.fetchall()
+                cur.execute(f"SELECT COUNT(*) FROM arena WHERE day = {_ph()}", (day,))
+                total = cur.fetchone()[0]
+                myrank = None
+                if pid is not None and req.ms is not None:
+                    cur.execute(f"SELECT ms FROM arena WHERE day = {_ph()} AND pid = {_ph()}", (day, pid))
+                    r = cur.fetchone()
+                    if r:
+                        cur.execute(f"SELECT COUNT(*) FROM arena WHERE day = {_ph()} AND ms < {_ph()}", (day, r[0]))
+                        myrank = cur.fetchone()[0] + 1
+        except Exception:
+            return {"ok": False}
+        return {"ok": True, "top": [{"name": n, "ms": m} for (n, m) in rows], "total": total, "rank": myrank}
 
     # ---- friends (⑧) ----
     @app.post("/api/friends/add")

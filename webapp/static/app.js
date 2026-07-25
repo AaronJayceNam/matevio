@@ -2265,6 +2265,80 @@ function stormRenderHud() {
 }
 
 // =========================================================================== //
+// MODE5: DAILY PUZZLE ARENA (일일 아레나) — everyone gets the SAME 5 puzzles each
+// day; ranked by total time with a wrong-move penalty. Client plays + times;
+// only the final time is submitted (/api/arena), reusing the puzzle board.
+// =========================================================================== //
+const ARENA = { active: false, idx: 0, items: [], startTs: 0, penalty: 0 };
+function arenaPuzzles() {
+  const n = (PZ.list && PZ.list.length) ? PZ.list.length : 1;
+  let h = 2166136261 >>> 0;
+  for (const ch of dateStr()) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  const out = [];
+  for (let i = 0; i < 5; i++) { h = Math.imul(h, 1103515245) >>> 0; h = (h + 12345) >>> 0; out.push(h % n); }
+  return out;
+}
+function arenaDoneToday() { return localStorage.getItem("cc_arena_done") === dateStr(); }
+function startArena() {
+  if (!PZ.list || !PZ.list.length) return;
+  ARENA.active = true; ARENA.idx = 0; ARENA.items = arenaPuzzles(); ARENA.startTs = Date.now(); ARENA.penalty = 0;
+  switchTab("puzzle"); document.body.classList.add("storm-on");
+  if (typeof metric === "function") metric("arena_run");
+  arenaServe(); arenaHud();
+}
+function arenaServe() { loadPuzzle(ARENA.items[ARENA.idx], { force: true }); }
+function arenaSolved() {
+  ARENA.idx++;
+  if (ARENA.idx < ARENA.items.length) { arenaServe(); arenaHud(); } else arenaFinish();
+}
+function arenaWrong() { ARENA.penalty += 10000; arenaHud(); }   // +10s per miss, keep solving
+function arenaHud() {
+  const el = document.getElementById("stormHud"); if (!el) return;
+  const elapsed = Math.round((Date.now() - ARENA.startTs + ARENA.penalty) / 1000);
+  el.innerHTML = '<span class="sh-score">🏆 ' + ARENA.idx + "/5</span>" +
+    '<span class="sh-time">⏱ ' + elapsed + "s</span>" +
+    (ARENA.penalty ? '<span class="sh-combo">⚠️ +' + (ARENA.penalty / 1000) + "s</span>" : "");
+  el.hidden = false;
+}
+async function arenaFinish() {
+  ARENA.active = false; document.body.classList.remove("storm-on");
+  const hud = document.getElementById("stormHud"); if (hud) hud.hidden = true;
+  const ms = (Date.now() - ARENA.startTs) + ARENA.penalty;
+  localStorage.setItem("cc_arena_done", dateStr());
+  if (typeof xpAdd === "function") xpAdd(15);
+  const T = (typeof t === "function") ? t : ((k) => k);
+  let board = null;
+  try { board = await api("/api/arena", { day: dateStr(), ms, token: (AUTH && AUTH.token) || null, ref: anonId(), name: (AUTH && AUTH.id) || T("profile_guest") }); } catch (e) {}
+  const secs = (ms / 1000).toFixed(1);
+  const rank = (board && board.rank) ? board.rank : null;
+  const sub = rank ? T("arena_rank").replace("{r}", rank).replace("{n}", board.total) : T("arena_time").replace("{s}", secs);
+  showResult({ kind: "win", icon: "🏆", title: T("arena_done").replace("{s}", secs), sub,
+    actions: [
+      { label: T("arena_board_btn"), primary: true, onClick: () => { hideResult(); showArenaBoard(board); } },
+      { label: T("card_share"), onClick: () => { if (typeof shareResultCard === "function") shareResultCard({ icon: "🏆", title: T("arena_card").replace("{s}", secs), sub: "Daily Arena" }); } },
+      { label: T("pz_theme_list_btn"), onClick: () => { hideResult(); renderPzGrid(); } },
+    ] });
+}
+async function openArenaBoard() {
+  let board = null;
+  try { board = await api("/api/arena", { day: dateStr(), token: (AUTH && AUTH.token) || null, ref: anonId() }); } catch (e) {}
+  showArenaBoard(board);
+}
+function showArenaBoard(board) {
+  const m = document.getElementById("arenaModal"); if (!m) return;
+  const list = document.getElementById("arenaList"); if (!list) return;
+  const T = (typeof t === "function") ? t : ((k) => k);
+  const top = (board && board.top) || [];
+  list.innerHTML = top.length
+    ? top.map((e, i) => '<div class="arena-row"><span class="arena-rk">' + (i + 1) + "</span>" +
+        '<span class="arena-nm">' + escapeHtml(e.name || "?") + "</span>" +
+        '<span class="arena-ms">' + (e.ms / 1000).toFixed(1) + "s</span></div>").join("")
+    : '<div class="hist-empty">' + T("arena_empty") + "</div>";
+  m.classList.remove("hidden");
+}
+function closeArenaBoard() { const m = document.getElementById("arenaModal"); if (m) m.classList.add("hidden"); }
+
+// =========================================================================== //
 // MODE3: SURVIVAL LADDER (서바이벌 래더) — one life; climb AI levels 1→15. First
 // loss ends the run at the level you reached. Reuses the AI game flow.
 // =========================================================================== //
@@ -2850,6 +2924,7 @@ async function pzUserMove(uci) {
     await sleep(760);
     PZ.fen = prevFen; PZ.lastUci = prevLast;
     PZ.busy = false; renderPzBoard();
+    if (typeof ARENA !== "undefined" && ARENA.active) { arenaWrong(); return; }   // MODE5: +penalty, keep solving
     if (typeof STORM !== "undefined" && STORM.active) return stormEnd();   // MODE1: one miss ends the run
     PZ.fails = (PZ.fails || 0) + 1;
     if (PZ.fails >= (PZ.beginner ? 1 : 3)) { pzShowHint(); setStatus("pzFeedback", t("pz_autohint"), false); }  // struggling → auto hint
@@ -2940,8 +3015,9 @@ async function pzUserMoveLine(uci) {
 }
 
 function pzSolved() {
-  // MODE1 폭풍 퍼즐: in a Storm run, a solve just scores + serves the next puzzle
-  // (no rating/streak/result side effects).
+  // MODE5 일일 아레나 / MODE1 폭풍 퍼즐: timed runs handle their own advance and
+  // skip the normal rating/streak/result side effects.
+  if (typeof ARENA !== "undefined" && ARENA.active) return arenaSolved();
   if (typeof STORM !== "undefined" && STORM.active) return stormSolved();
   // ADD3: ad-hoc quiz position solved → advance the guess-the-move session and
   // stop (no PZ.list entry, no rating/streak/daily side effects).
@@ -3080,6 +3156,8 @@ document.querySelectorAll("#pzCats button").forEach((b) => {
 });
 if ($("pzRecommend")) $("pzRecommend").onclick = () => loadAdaptivePuzzle();
 if ($("pzStormBtn")) $("pzStormBtn").onclick = () => startStorm();   // MODE1
+if ($("pzArenaBtn")) $("pzArenaBtn").onclick = () => { if (arenaDoneToday()) openArenaBoard(); else startArena(); };   // MODE5
+if ($("arenaClose")) $("arenaClose").onclick = () => closeArenaBoard();
 if ($("ladderBtn")) $("ladderBtn").onclick = () => startLadder();     // MODE3
 if ($("bossBtn")) $("bossBtn").onclick = () => openBossModal();       // MODE6
 if ($("bossClose")) $("bossClose").onclick = () => closeBossModal();

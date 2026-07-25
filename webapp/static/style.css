@@ -1457,6 +1457,16 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
   background:linear-gradient(135deg,#ffb347,#ff7a45); color:#2a1500; font-weight:800; font-size:14px; cursor:pointer;
   box-shadow:0 6px 16px -8px #ff7a45; transition:transform .1s ease; min-height:44px; }
 .pz-storm:hover{ transform:translateY(-1px); }
+.pz-arena{ display:block; width:100%; margin:0 0 8px; padding:12px 14px; border:none; border-radius:var(--r-md);
+  background:linear-gradient(135deg,#c99320,#e9b23a); color:#2a1f00; font-weight:800; font-size:14px; cursor:pointer;
+  box-shadow:0 6px 16px -8px #c99320; transition:transform .1s ease; min-height:44px; }
+.pz-arena:hover{ transform:translateY(-1px); }
+body.storm-on #pzArenaBtn{ display:none !important; }
+.arena-list{ display:flex; flex-direction:column; gap:6px; max-height:56vh; overflow-y:auto; }
+.arena-row{ display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:var(--r-sm); background:var(--panel2); }
+.arena-row .arena-rk{ flex:0 0 auto; width:26px; text-align:center; font-weight:900; color:var(--accent); font-variant-numeric:tabular-nums; }
+.arena-row .arena-nm{ flex:1; font-size:var(--fs-sm); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.arena-row .arena-ms{ flex:0 0 auto; font-weight:800; font-variant-numeric:tabular-nums; }
 .storm-hud{ display:flex; gap:10px; justify-content:center; align-items:center; margin:0 0 10px; padding:9px 12px;
   border-radius:var(--r-pill); background:linear-gradient(135deg,#ffb347,#ff7a45); color:#2a1500; font-weight:900; font-variant-numeric:tabular-nums; }
 .storm-hud .sh-time.low{ color:#a11; animation:pulseHint 1s ease-in-out infinite; }
