@@ -943,7 +943,8 @@ var I18N = {
   pers_d_def_bold:{ ko: "받아치며 역전을 만들어내요.", en: "You absorb and strike back for the win.", ja: "受けてから反撃で逆転。", zh: "先守后攻，逆转取胜。", es: "Absorbes y contraatacas." },
   pers_d_def_calm:{ ko: "탄탄하게 막고 실수를 유도해요.", en: "You defend solidly and grind out errors.", ja: "堅く守り相手のミスを誘う。", zh: "稳固防守，诱敌失误。", es: "Defiendes sólido y explotas errores." },
   // ---- MODE4 기물 접기 / MODE6 보스 러시 ----
-  odds_h:         { ko: "🎯 기물 접기 (AI가 기물을 접고 시작)", en: "🎯 Piece odds (AI starts down material)", ja: "🎯 駒落ち(AIが駒を落として開始)", zh: "🎯 让子(AI减少子力开局)", es: "🎯 Ventaja de piezas (IA con menos)" },
+  odds_h:         { ko: "🎯 기물 접기 — AI가 접고 시작 (내가 유리)", en: "🎯 Piece odds — AI starts down (you're up)", ja: "🎯 駒落ち — AIが落として開始(有利)", zh: "🎯 让子 — AI减子开局(我方有利)", es: "🎯 Ventaja — la IA empieza con menos" },
+  odds_h2:        { ko: "🥋 내가 접고 시작 (내가 불리)", en: "🥋 Handicap yourself (you're down)", ja: "🥋 自分が駒落ち(不利)", zh: "🥋 我方让子(我方不利)", es: "🥋 Hándicap propio (empiezas con menos)" },
   odds_n:         { ko: "나이트", en: "Knight", ja: "ナイト", zh: "马", es: "Caballo" },
   odds_b:         { ko: "비숍", en: "Bishop", ja: "ビショップ", zh: "象", es: "Alfil" },
   odds_r:         { ko: "룩", en: "Rook", ja: "ルーク", zh: "车", es: "Torre" },

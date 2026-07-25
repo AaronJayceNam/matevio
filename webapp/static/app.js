@@ -2498,11 +2498,15 @@ function ladderEndGame(kind) {
 // a modified position. Reuses the AI game flow via aiStart({startFen}).
 // =========================================================================== //
 const ODDS = {
-  n_up: "rnbqkb1r/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",   // AI (black) down a knight
-  b_up: "rn1qkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",   // AI down a bishop
-  r_up: "1nbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQk - 0 1",    // AI down a rook
-  q_up: "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",   // AI down the queen
-  n_down: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/1NBQKBNR w KQkq - 0 1", // I (white) down a knight
+  // I (White) get the odds → remove one of the AI's (Black) pieces
+  n_up: "rnbqkb1r/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",   // AI down a knight (g8)
+  b_up: "rn1qkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",   // AI down a bishop (c8)
+  r_up: "1nbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQk - 0 1",    // AI down a rook (a8; black loses q-side castle)
+  q_up: "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",   // AI down the queen (d8)
+  // I handicap MYSELF → remove one of my own (White) pieces
+  n_down: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKB1R w KQkq - 0 1", // I'm down a knight (g1) — was wrongly emptying a1
+  b_down: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RN1QKBNR w KQkq - 0 1", // I'm down a bishop (c1)
+  r_down: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/1NBQKBNR w Kkq - 0 1",  // I'm down a rook (a1; I lose q-side castle)
 };
 function startOdds(kind) {
   const fen = ODDS[kind]; if (!fen) return;
