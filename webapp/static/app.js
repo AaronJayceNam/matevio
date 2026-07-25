@@ -2444,7 +2444,7 @@ function renderRepertoire() {
       '<div class="rep-row"><span class="rep-name">' + escapeHtml(l.name) + "</span>" +
       '<span class="rep-len">' + l.moves.length + "</span>" +
       '<button class="rep-go" data-rep="' + i + '">' + t("rep_drill") + "</button>" +
-      '<button class="rep-del" data-repdel="' + i + '" aria-label="delete">✕</button></div>").join("") + "</div>";
+      '<button class="rep-del" data-repdel="' + i + '" aria-label="delete">✕</button></div>').join("") + "</div>";
   el.querySelectorAll(".rep-go").forEach((b) => b.onclick = () => startRepDrill(+b.dataset.rep));
   el.querySelectorAll(".rep-del").forEach((b) => b.onclick = () => { const a = repLines(); a.splice(+b.dataset.repdel, 1); saveRepLines(a); renderRepertoire(); });
 }
