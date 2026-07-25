@@ -243,6 +243,19 @@ def _init_db() -> None:
             gid TEXT PRIMARY KEY,
             data TEXT NOT NULL,
             updated TEXT)""")
+        # ADD10: ultra-light funnel analytics — one row per funnel event. No PII;
+        # `ref` is an anonymous client id, `uid` only present once signed in.
+        cur.execute("""CREATE TABLE IF NOT EXISTS metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event TEXT NOT NULL,
+            ref TEXT,
+            uid TEXT,
+            ts TEXT)""" if not _IS_PG else """CREATE TABLE IF NOT EXISTS metrics (
+            id SERIAL PRIMARY KEY,
+            event TEXT NOT NULL,
+            ref TEXT,
+            uid TEXT,
+            ts TEXT)""")
         # server-authoritative rating column (added by migration on old DBs)
         if _IS_PG:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS rating INTEGER")
@@ -441,6 +454,12 @@ class SaveRequest(BaseModel):
 class FriendRequest(BaseModel):
     token: str
     id: str
+
+
+class MetricRequest(BaseModel):
+    event: str
+    ref: str | None = None
+    token: str | None = None
 
 
 # Korean text can arrive either precomposed (NFC) or decomposed (NFD, common on
@@ -659,6 +678,37 @@ def register_auth(app: FastAPI) -> None:
                   "topStreak": by_streak, "total": len(entries)}
         _lb_cache["data"], _lb_cache["t"] = result, now
         return result
+
+    # ADD10: ultra-light funnel analytics. Fire-and-forget; a whitelist of known
+    # events keeps the table from being spammed with arbitrary strings.
+    _METRIC_EVENTS = {
+        "first_visit", "first_puzzle", "first_win", "signup", "install",
+        "ref_land", "share_puzzle", "review_done", "active_review", "prescription",
+    }
+
+    @app.post("/api/metric")
+    def metric(req: MetricRequest):
+        ev = (req.event or "")[:40]
+        if ev not in _METRIC_EVENTS:
+            return {"ok": False}
+        uid = None
+        if req.token:
+            try:
+                with _connect() as con:
+                    row = _user_for_token(con, req.token)
+                    uid = row[0] if row else None
+            except Exception:
+                uid = None
+        try:
+            with _connect() as con:
+                cur = con.cursor()
+                cur.execute(
+                    f"INSERT INTO metrics (event, ref, uid, ts) VALUES ({_ph()}, {_ph()}, {_ph()}, {_ph()})",
+                    (ev, (req.ref or "")[:40] or None, uid, _now()))
+                con.commit()
+        except Exception:
+            return {"ok": False}
+        return {"ok": True}
 
     # ---- friends (⑧) ----
     @app.post("/api/friends/add")

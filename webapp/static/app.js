@@ -711,6 +711,7 @@ async function runAnalyze(req, statusId = "aiStatus") {
     const view = await prefetchAnalyze(req);   // reuse the in-flight/finished prefetch
     loadReview(view);
     if (typeof questBump === "function") questBump("reviews");   // daily quest progress
+    if (typeof metric === "function") metric("review_done", { once: true });   // ADD10 funnel
     switchTab("review");
   } catch (e) {
     _analyzeOnProg = null;
@@ -747,17 +748,21 @@ function loadReview(view) {
   const nMiss = (typeof rvHumanMistakes === "function") ? rvHumanMistakes().length : 0;
   const acts = $("rvActions");
   if (acts) {
+    acts.hidden = false;
+    let html = "";
     if (nMiss > 0) {
-      acts.hidden = false;
-      acts.innerHTML =
-        `<button class="rv-act" id="rvQuizBtn">🎯 ${t("qz_start_btn")}</button>` +
-        `<button class="rv-act" id="rvRxBtn">🩺 ${t("rx_start_btn")}</button>` +
-        `<span class="rv-act-note">${t("rv_acts_note").replace("{n}", nMiss)}</span>`;
-      const q = $("rvQuizBtn"), r = $("rvRxBtn");
-      if (q) q.onclick = () => startActiveReview();
-      if (r) r.onclick = () => startPrescription();
-    } else { acts.hidden = true; acts.innerHTML = ""; }
+      html += `<button class="rv-act" id="rvQuizBtn">🎯 ${t("qz_start_btn")}</button>` +
+        `<button class="rv-act" id="rvRxBtn">🩺 ${t("rx_start_btn")}</button>`;
+    }
+    html += `<button class="rv-act" id="rvOpenBtn">♟️ ${t("op_btn")}</button>`;
+    if (nMiss > 0) html += `<span class="rv-act-note">${t("rv_acts_note").replace("{n}", nMiss)}</span>`;
+    acts.innerHTML = html;
+    const q = $("rvQuizBtn"), r = $("rvRxBtn"), o = $("rvOpenBtn");
+    if (q) q.onclick = () => startActiveReview();
+    if (r) r.onclick = () => startPrescription();
+    if (o) o.onclick = () => renderOpeningReport();
   }
+  const opDiv = document.getElementById("rvOpening"); if (opDiv) { opDiv.hidden = true; opDiv.innerHTML = ""; }
 
   // movelist
   let html = "";
@@ -984,6 +989,7 @@ function practiceThemeBand(cat) { PZ.cat = cat; switchTab("puzzle"); loadPuzzle(
 // ---- ADD6: per-game prescription — 3 puzzles targeting this game's mistakes ----
 const RX = { queue: [], i: 0 };
 function startPrescription() {
+  if (typeof metric === "function") metric("prescription");
   const mistakes = rvHumanMistakes();
   const cats = [], seen = new Set();
   for (const m of mistakes) {
@@ -1021,6 +1027,7 @@ function rxAdvance() {
 // try to FIND the best move yourself, checked live by the engine. ----
 const QZ = { items: [], i: 0 };
 async function startActiveReview() {
+  if (typeof metric === "function") metric("active_review");
   const mistakes = rvHumanMistakes().filter((m) => m.best).slice(0, 5);
   if (!mistakes.length) { if (typeof shareFlash === "function") shareFlash(t("qz_none")); return; }
   const all = (LAST_REQ && LAST_REQ.moves) || [];
@@ -1530,6 +1537,7 @@ function aiEndGame() {
   else if (r === "0-1") kind = AIG.human === "b" ? "win" : "loss";
   if (typeof questBump === "function") questBump("aiGames");   // daily quest progress
   if (kind === "win" && typeof suggestSaveProgress === "function") suggestSaveProgress();   // guests: save nudge
+  if (kind === "win" && typeof metric === "function") metric("first_win", { once: true });   // ADD10 funnel
   if (kind === "win" && typeof maybeFirstSuccessSoftAsk === "function") setTimeout(maybeFirstSuccessSoftAsk, 1400);   // ADD5
 
   // Beating this level grants its title (if it's a new personal best).
@@ -2320,6 +2328,7 @@ function pzSolved() {
   if (typeof questBump === "function") questBump("puzzles");        // daily quest progress
   if (typeof xpAdd === "function") xpAdd(5);                        // learning XP (first solve only)
   if (typeof suggestSaveProgress === "function") suggestSaveProgress();   // guests: gentle save nudge
+  if (typeof metric === "function") metric("first_puzzle", { once: true });   // ADD10 funnel
   // ADD5: first product success → soft-ask to install / enable notifications
   if (typeof maybeFirstSuccessSoftAsk === "function") setTimeout(maybeFirstSuccessSoftAsk, 1200);
   // refresh visit/streak state for the conditional daily reminder
@@ -2385,6 +2394,7 @@ function pzSolved() {
     kind: "win", icon: "🏆", title: t("pz_solved_title"), sub,
     actions: [
       { label: t("pz_next_btn"), primary: true, onClick: () => loadAdaptivePuzzle() },
+      { label: t("pz_share_btn"), onClick: () => sharePuzzleLink(p.level) },   // ADD4 challenge link
       { label: t("pz_retry_btn"), onClick: () => loadPuzzle(PZ.idx) },
     ],
   });
@@ -3249,6 +3259,7 @@ function collectProgress() {
     reviewQueue: (typeof reviewQueue === "function") ? reviewQueue() : {},
     xp: (typeof xpGet === "function") ? xpGet() : 0,
     pzRating: (typeof pzRatingGet === "function") ? pzRatingGet() : 0,
+    referred_by: localStorage.getItem("cc_ref") || undefined,   // ADD4: attribution
   };
 }
 
@@ -3396,7 +3407,7 @@ async function authSubmit(mode) {
       alert(T("recovery_saved") + "\n\n    " + r.recovery);
     }
     // brand-new account → ask their skill level to seed the starting rating
-    if (mode === "register") showSkillModal();
+    if (mode === "register") { showSkillModal(); if (typeof metric === "function") metric("signup"); }   // ADD10 funnel
   } catch (e) {
     setStatus("authStatus", isOffline(e) ? t("offline_msg") : e.message, true);
   }
@@ -3854,12 +3865,22 @@ function currentStreak() {
 }
 
 function renderGrowth() {
+  if (typeof renderLeague === "function") renderLeague();   // ADD8
   renderWeakness();
   renderGoal();
   renderAchievements();
   renderGrowthAdapt();
   renderGrowthChart();
   renderGrowthProjection();
+  // FIX10: show the friendly empty-state (and hide the data cards) for a user
+  // who has no games and no solved puzzles yet.
+  const hist = (typeof gameHistory === "function") ? gameHistory() : [];
+  const solved = (typeof PZ !== "undefined" && PZ.solved) ? PZ.solved.size : 0;
+  const fresh = (!hist || !hist.length) && !solved;
+  const empty = document.getElementById("growthEmpty");
+  const wrap = document.querySelector("#tab-growth .growth-wrap");
+  if (empty) empty.hidden = !fresh;
+  if (wrap) wrap.style.display = fresh ? "none" : "";
 }
 
 // ---- weakness report + one-click prescription (⑨) ----
@@ -4586,7 +4607,180 @@ function checkSharedGame() {
   }, 500);
 }
 if ($("rvShare")) $("rvShare").onclick = () => shareGame(LAST_REQ);
-checkSharedGame();
+
+// =========================================================================== //
+// GROWTH LOOPS (Batch 5): funnel metrics (ADD10), referral + puzzle-challenge
+// links (ADD4) with a landing overlay (FIX6), weekly league (ADD8).
+// =========================================================================== //
+
+// ---- ADD10: ultra-light funnel analytics (anonymous; whitelisted events) ----
+function anonId() {
+  let id = localStorage.getItem("cc_anon");
+  if (!id) { id = "a" + Math.random().toString(36).slice(2, 10); localStorage.setItem("cc_anon", id); }
+  return id;
+}
+function metric(event, opts) {
+  try {
+    if (opts && opts.once) {
+      let done; try { done = JSON.parse(localStorage.getItem("cc_metrics") || "[]"); } catch (e) { done = []; }
+      if (done.includes(event)) return;
+      done.push(event); localStorage.setItem("cc_metrics", JSON.stringify(done));
+    }
+    fetch("/api/metric", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, ref: anonId(), token: (typeof AUTH !== "undefined" && AUTH.token) || null }),
+      keepalive: true }).catch(() => {});
+  } catch (e) {}
+}
+
+// ---- ADD4 + FIX6: launch links + landing overlay ----
+function openPuzzleByLevel(lvl) {
+  const go = () => {
+    const idx = PZ.list.findIndex((p) => p.level === lvl);
+    switchTab("puzzle");
+    if (idx >= 0) loadPuzzle(idx, { force: true }); else loadAdaptivePuzzle();
+  };
+  if (PZ.list && PZ.list.length) return go();
+  let n = 0;
+  const iv = setInterval(() => { if ((PZ.list && PZ.list.length) || n++ > 40) { clearInterval(iv); if (PZ.list && PZ.list.length) go(); } }, 150);
+}
+function sharePuzzleLink(lvl) {
+  const url = location.origin + "/?p=" + lvl;
+  metric("share_puzzle");
+  if (navigator.share) { navigator.share({ title: "Matevio", text: t("pz_challenge_text"), url }).catch(() => {}); return; }
+  try { navigator.clipboard.writeText(url); if (typeof shareFlash === "function") shareFlash(t("pz_link_copied")); }
+  catch (e) { try { prompt(t("pz_link_copied"), url); } catch (e2) {} }
+}
+function showLanding(ic, title, sub, goLabel, goFn) {
+  const m = document.getElementById("landingModal");
+  if (!m) { goFn(); return; }
+  document.getElementById("landingIc").textContent = ic;
+  document.getElementById("landingTitle").textContent = title;
+  document.getElementById("landingSub").textContent = sub;
+  const g = document.getElementById("landingGo"); g.textContent = goLabel;
+  g.onclick = () => { m.classList.add("hidden"); goFn(); };
+  const s = document.getElementById("landingSkip");
+  if (s) s.onclick = () => m.classList.add("hidden");
+  m.classList.remove("hidden");
+}
+function checkLaunchParams() {
+  let params; try { params = new URLSearchParams(location.search); } catch (e) { return false; }
+  const ref = params.get("ref");
+  const idOk = ref && /^[A-Za-z0-9_\-가-힣]{2,20}$/.test(ref);
+  if (idOk && !localStorage.getItem("cc_ref") && ref !== (typeof AUTH !== "undefined" && AUTH.id)) {
+    localStorage.setItem("cc_ref", ref); metric("ref_land");
+  }
+  const p = params.get("p");
+  if (p != null) {
+    const lvl = parseInt(p, 10);
+    try { history.replaceState(null, "", location.origin + "/"); } catch (e) {}
+    if (!isNaN(lvl)) {
+      showLanding("🎯", t("landing_pz_title"),
+        idOk ? t("landing_pz_sub_ref").replace("{id}", ref) : t("landing_pz_sub"),
+        t("landing_pz_go"), () => openPuzzleByLevel(lvl));
+      return true;
+    }
+  }
+  if (idOk) {
+    try { history.replaceState(null, "", location.origin + "/"); } catch (e) {}
+    showLanding("♟️", t("landing_ref_title"), t("landing_ref_sub").replace("{id}", ref),
+      t("landing_ref_go"), () => { switchTab("puzzle"); loadAdaptivePuzzle(); });
+    return true;
+  }
+  return false;
+}
+
+// ---- ADD8: weekly league (client-side; XP-earning actions score points) ----
+const LEAGUE_TIERS = [
+  { key: "bronze", ic: "🥉", min: 0 }, { key: "silver", ic: "🥈", min: 50 },
+  { key: "gold", ic: "🥇", min: 150 }, { key: "platinum", ic: "💠", min: 300 },
+  { key: "diamond", ic: "💎", min: 600 },
+];
+function leagueGet() {
+  let l; try { l = JSON.parse(localStorage.getItem("cc_league") || "null"); } catch (e) { l = null; }
+  const wk = (typeof weekKey === "function") ? weekKey() : new Date().toISOString().slice(0, 10);
+  if (!l || l.week !== wk) { l = { week: wk, points: 0, prevTier: (l && l.tier) || "bronze" }; localStorage.setItem("cc_league", JSON.stringify(l)); }
+  return l;
+}
+function leagueTierOf(points) {
+  let t0 = LEAGUE_TIERS[0];
+  for (const x of LEAGUE_TIERS) if (points >= x.min) t0 = x;
+  return t0;
+}
+function leagueAdd(points) {
+  const l = leagueGet(); l.points += points; l.tier = leagueTierOf(l.points).key;
+  localStorage.setItem("cc_league", JSON.stringify(l));
+  const g = document.getElementById("tab-growth");
+  if (g && g.classList.contains("active")) renderLeague();
+}
+function renderLeague() {
+  const el = document.getElementById("leagueCard"); if (!el) return;
+  const l = leagueGet(); const cur = leagueTierOf(l.points);
+  const idx = LEAGUE_TIERS.findIndex((x) => x.key === cur.key);
+  const next = LEAGUE_TIERS[idx + 1] || null;
+  const toNext = next ? Math.max(0, next.min - l.points) : 0;
+  const lo = cur.min, hi = next ? next.min : Math.max(cur.min + 100, l.points);
+  const pct = Math.max(0, Math.min(100, (l.points - lo) / Math.max(1, hi - lo) * 100));
+  el.innerHTML =
+    '<div class="lg-head"><span class="lg-ic">' + cur.ic + '</span>' +
+      '<div class="lg-meta"><b>' + t("league_" + cur.key) + '</b>' +
+      '<span class="lg-week">' + t("league_week").replace("{n}", l.points) + '</span></div></div>' +
+    '<div class="lg-track"><div class="lg-fill" style="width:' + pct + '%"></div></div>' +
+    (next ? '<div class="lg-next">' + t("league_next").replace("{n}", toNext).replace("{tier}", t("league_" + next.key)) + '</div>'
+          : '<div class="lg-next">' + t("league_top") + '</div>');
+}
+
+// ---- ADD7: opening principles rule-checker (client-side, from SAN) ----
+function openingReport(sanMoves, humanColor) {
+  // humanColor: 'white' | 'black'. Evaluate the human's first ~10 moves.
+  const isW = humanColor !== "black";
+  const my = sanMoves.filter((_, i) => (i % 2 === 0) === isW).slice(0, 10);
+  const findings = [];
+  let good = 0, total = 0;
+  const has = (re) => my.some((s) => re.test(s));
+  // 1) central pawn in the first two moves
+  total++;
+  if (my.slice(0, 2).some((s) => /^[ed][45]$/.test(s))) { good++; findings.push({ ok: true, k: "op_center_ok" }); }
+  else findings.push({ ok: false, k: "op_center_no" });
+  // 2) developed at least two minor pieces (N/B moves)
+  total++;
+  const minors = my.filter((s) => /^[NB]/.test(s)).length;
+  if (minors >= 2) { good++; findings.push({ ok: true, k: "op_dev_ok" }); }
+  else findings.push({ ok: false, k: "op_dev_no" });
+  // 3) castled
+  total++;
+  if (has(/^O-O/)) { good++; findings.push({ ok: true, k: "op_castle_ok" }); }
+  else findings.push({ ok: false, k: "op_castle_no" });
+  // 4) didn't bring the queen out too early (before move 5)
+  total++;
+  const earlyQ = my.slice(0, 4).some((s) => /^Q/.test(s));
+  if (!earlyQ) { good++; findings.push({ ok: true, k: "op_queen_ok" }); }
+  else findings.push({ ok: false, k: "op_queen_no" });
+  // 5) didn't shuffle the same minor piece repeatedly
+  total++;
+  const dests = my.filter((s) => /^[NB]/.test(s)).map((s) => s.replace(/[+#!?]/g, "").slice(-2));
+  const moved = my.filter((s) => /^[NB]/.test(s)).length;
+  const wasteful = moved > 0 && (moved - new Set(dests).size) >= 1;
+  if (!wasteful) { good++; findings.push({ ok: true, k: "op_tempo_ok" }); }
+  else findings.push({ ok: false, k: "op_tempo_no" });
+  return { score: good, total, findings };
+}
+function renderOpeningReport() {
+  const el = document.getElementById("rvOpening"); if (!el || !RV.view) return;
+  const san = (RV.view.moves || []).map((m) => m.san + (m.symbol || ""));
+  const hc = (typeof rvHumanColor === "function") ? rvHumanColor() : "white";
+  const r = openingReport(san, hc);
+  el.innerHTML =
+    '<div class="op-head"><b>♟️ ' + t("op_title") + '</b><span class="op-score">' + r.score + "/" + r.total + "</span></div>" +
+    '<div class="op-list">' + r.findings.map((f) =>
+      '<div class="op-row ' + (f.ok ? "ok" : "bad") + '"><span>' + (f.ok ? "✅" : "⚠️") + "</span>" + t(f.k) + "</div>").join("") + "</div>";
+  el.hidden = false;
+}
+
+// launch: record the visit, then handle share/referral/puzzle links (falling
+// back to the legacy ?g= shared-game replay).
+metric("first_visit", { once: true });
+if (!checkLaunchParams()) checkSharedGame();
+
 
 // =========================================================================== //
 // ⑧ Friends list + challenge/rematch (reuses the online invite-code flow)
@@ -4774,6 +4968,7 @@ function xpLevel(xp) { return Math.floor(Math.sqrt((xp || 0) / 60)) + 1; }
 function xpForLevel(lv) { return (lv - 1) * (lv - 1) * 60; }
 function xpAdd(n) {
   if (!n) return;
+  if (typeof leagueAdd === "function") leagueAdd(n);   // ADD8: XP also scores weekly-league points
   const before = xpLevel(xpGet());
   const v = xpGet() + n; localStorage.setItem("cc_xp", String(v));
   if (typeof authSchedulePush === "function") authSchedulePush();

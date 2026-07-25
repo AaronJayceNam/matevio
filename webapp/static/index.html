@@ -18,7 +18,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=114">
+<link rel="stylesheet" href="/static/style.css?v=115">
 </head>
 <body>
 
@@ -51,6 +51,17 @@
   <button id="softAskNotify" data-i18n="softask_notify" style="border:1px solid #2f7d4d;background:transparent;color:#d7f2e2;font-weight:700;border-radius:8px;padding:5px 12px;font-size:12.5px;cursor:pointer">🔔 알림 켜기</button>
   <button id="softAskLater" data-i18n="softask_later" style="border:none;background:transparent;color:#9fc4ae;font-size:12px;cursor:pointer">나중에</button>
   <button id="softAskClose" aria-label="닫기" data-i18n-aria="tt_close" style="border:none;background:transparent;font-size:17px;line-height:1;cursor:pointer;color:#d7f2e2">×</button>
+</div>
+
+<!-- ADD4 + FIX6: landing overlay for share / referral / puzzle-challenge links -->
+<div id="landingModal" class="landing-modal hidden">
+  <div class="landing-card">
+    <div class="landing-ic" id="landingIc">🎯</div>
+    <h3 id="landingTitle"></h3>
+    <p id="landingSub"></p>
+    <button class="primary" id="landingGo"></button>
+    <button class="ghost" id="landingSkip" data-i18n="landing_skip">닫기</button>
+  </div>
 </div>
 
 <header class="top">
@@ -467,7 +478,18 @@
     <circle cx="64" cy="70" r="3.5" fill="#ffd968"/><circle cx="100" cy="54" r="3.5" fill="#ffd968"/><circle cx="118" cy="44" r="5" fill="#ffd968"/>
     <path d="M108 16h20v6a10 10 0 0 1-20 0z" fill="#ffd968"/><rect x="116" y="26" width="4" height="7" fill="#ffd968"/><rect x="109" y="33" width="18" height="3" rx="1.5" fill="#ffd968"/>
   </svg></div>
+  <!-- FIX10: friendly empty state for brand-new users with no activity yet -->
+  <div class="my-empty card" id="growthEmpty" hidden>
+    <div class="my-empty-ic">🌱</div>
+    <b data-i18n="empty_growth_t">아직 성장 데이터가 없어요</b>
+    <p data-i18n="empty_growth_p">퍼즐 하나만 풀어도 여기에 실력 곡선이 그려져요.</p>
+    <button class="primary" data-goto="puzzle" data-i18n="empty_growth_cta">🧩 첫 퍼즐 풀기</button>
+  </div>
   <div class="growth-wrap">
+    <div class="card" id="leagueCardWrap">
+      <h3 data-i18n="gr_league">🏆 주간 리그</h3>
+      <div id="leagueCard"></div>
+    </div>
     <div class="card" id="weakCard">
       <h3 data-i18n="gr_weak">🎯 내 약점 훈련</h3>
       <div id="weakReport"></div>
@@ -523,6 +545,7 @@
   <div id="rvContent" class="hidden">
   <div class="card summary" id="rvSummary"></div>
   <div class="rv-actions" id="rvActions" hidden></div>
+  <div class="rv-opening card" id="rvOpening" hidden></div>
   <div class="cols">
     <div>
       <div class="boardwrap">
@@ -774,8 +797,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=114"></script>
-<script src="/static/app.js?v=114"></script>
+<script src="/static/i18n.js?v=115"></script>
+<script src="/static/app.js?v=115"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {
@@ -838,6 +861,7 @@
     });
     window.addEventListener("appinstalled", function () {
       deferred = null; window.__pwaDeferred = null; if (btn) btn.classList.add("hidden");
+      try { if (typeof metric === "function") metric("install", { once: true }); } catch (e) {}
     });
   })();
   // In-app browsers (KakaoTalk / Naver app / Instagram / Facebook / Line …) block

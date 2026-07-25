@@ -333,6 +333,42 @@ input[type=range]{ accent-color:var(--accent); }
 .rv-theme-cta{ padding:5px 11px; border:1px solid var(--accent); border-radius:99px; background:transparent;
   color:var(--accent); font-weight:800; font-size:12px; cursor:pointer; }
 .rv-theme-cta:hover{ background:rgba(79,184,119,.14); }
+/* ADD7: opening principles report */
+.rv-opening{ margin:0 0 12px; }
+.rv-opening .op-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.rv-opening .op-score{ font-weight:800; color:var(--accent); font-variant-numeric:tabular-nums; }
+.rv-opening .op-list{ display:flex; flex-direction:column; gap:6px; }
+.rv-opening .op-row{ display:flex; align-items:flex-start; gap:8px; font-size:13px; color:var(--muted); }
+.rv-opening .op-row.ok{ color:var(--ink); }
+.rv-opening .op-row span{ flex:0 0 auto; }
+/* ADD8: weekly league card */
+#leagueCard .lg-head{ display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+#leagueCard .lg-ic{ font-size:34px; line-height:1; }
+#leagueCard .lg-meta{ display:flex; flex-direction:column; }
+#leagueCard .lg-meta b{ font-size:16px; }
+#leagueCard .lg-week{ font-size:12.5px; color:var(--muted); }
+#leagueCard .lg-track{ height:8px; border-radius:99px; background:var(--line); overflow:hidden; margin:0 0 8px; }
+#leagueCard .lg-fill{ height:100%; border-radius:99px; background:linear-gradient(90deg,var(--accent2),var(--accent)); transition:width .5s cubic-bezier(.4,0,.2,1); }
+#leagueCard .lg-next{ font-size:12.5px; color:var(--muted); }
+/* FIX10: empty-state cards */
+.my-empty{ text-align:center; padding:26px 18px; }
+.my-empty .my-empty-ic{ font-size:40px; margin-bottom:8px; }
+.my-empty b{ display:block; font-size:16px; margin-bottom:6px; }
+.my-empty p{ font-size:13px; color:var(--muted); margin:0 0 14px; }
+.my-empty .primary{ border:none; border-radius:12px; padding:11px 18px; font-weight:800; font-size:14px; cursor:pointer;
+  background:linear-gradient(180deg,var(--accent2),var(--accent)); color:#fff; box-shadow:0 6px 16px -8px var(--accent); }
+/* ADD4 + FIX6: landing overlay */
+.landing-modal{ position:fixed; inset:0; z-index:1200; display:flex; align-items:center; justify-content:center;
+  background:rgba(8,12,10,.72); backdrop-filter:blur(3px); padding:20px; }
+.landing-modal.hidden{ display:none; }
+.landing-card{ background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:26px 22px;
+  max-width:360px; width:100%; text-align:center; box-shadow:0 24px 60px -20px rgba(0,0,0,.6); }
+.landing-card .landing-ic{ font-size:48px; margin-bottom:6px; }
+.landing-card h3{ font-size:19px; margin:0 0 8px; }
+.landing-card p{ font-size:14px; color:var(--muted); margin:0 0 18px; line-height:1.5; }
+.landing-card .primary{ display:block; width:100%; border:none; border-radius:12px; padding:13px; font-weight:800; font-size:15px;
+  cursor:pointer; background:linear-gradient(180deg,var(--accent2),var(--accent)); color:#fff; margin:0 0 8px; box-shadow:0 8px 20px -8px var(--accent); }
+.landing-card .ghost{ background:transparent; border:none; color:var(--muted); font-size:13px; cursor:pointer; padding:6px; }
 /* ADD1: draw attention to the hint button during the guided first game */
 @keyframes pulseHint{ 0%,100%{ box-shadow:0 0 0 0 rgba(79,184,119,.5); } 50%{ box-shadow:0 0 0 7px rgba(79,184,119,0); } }
 .pulse-hint{ animation:pulseHint 1.3s ease-in-out infinite; border-color:var(--accent)!important; }
