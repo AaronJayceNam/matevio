@@ -121,7 +121,45 @@ const BOARD_THEMES = {
   blue:  { light: "#dee3e6", dark: "#8ca2ad" },
   gray:  { light: "#e8e8e8", dark: "#9a9a9a" },
   coral: { light: "#fde3da", dark: "#d38068" },
+  // FEAT7: unlockable premium themes (gated by XP level)
+  midnight: { light: "#c7d0e8", dark: "#3b4a70" },
+  rose:     { light: "#f6dde6", dark: "#c56e8f" },
+  neon:     { light: "#d7f7ee", dark: "#1f9e86" },
+  royal:    { light: "#efe4c4", dark: "#7b5aa6" },
 };
+// FEAT7: which themes are free vs unlockable (min XP level to equip)
+const THEME_UNLOCK = { green: 0, wood: 0, blue: 0, gray: 0, coral: 0, midnight: 3, rose: 5, neon: 8, royal: 12 };
+function themeUnlocked(key) {
+  const need = THEME_UNLOCK[key] || 0;
+  if (need <= 0) return true;
+  const lv = (typeof xpLevel === "function" && typeof xpGet === "function") ? xpLevel(xpGet()) : 1;
+  return lv >= need;
+}
+function equipTheme(key) {
+  if (!themeUnlocked(key)) return;
+  SETTINGS.boardTheme = key; localStorage.setItem("cc_board", key);
+  applyBoardTheme(key);
+  const sel = document.getElementById("setBoard"); if (sel && sel.querySelector('option[value="' + key + '"]')) sel.value = key;
+  if (typeof renderCosmetics === "function") renderCosmetics();
+}
+function renderCosmetics() {
+  const el = document.getElementById("cosmeticsCard"); if (!el) return;
+  el.hidden = false;
+  const T = (typeof t === "function") ? t : ((k) => k);
+  const cur = SETTINGS.boardTheme;
+  const keys = Object.keys(BOARD_THEMES);
+  const unlockedN = keys.filter(themeUnlocked).length;
+  el.innerHTML =
+    '<div class="cos-head"><b>🎨 ' + T("cos_title") + '</b><span class="cos-count">' + unlockedN + "/" + keys.length + "</span></div>" +
+    '<div class="cos-grid">' + keys.map((k) => {
+      const th = BOARD_THEMES[k], ok = themeUnlocked(k), need = THEME_UNLOCK[k] || 0;
+      return '<button class="cos-swatch' + (k === cur ? " on" : "") + (ok ? "" : " locked") + '" data-theme="' + k + '"' + (ok ? "" : " disabled") + ">" +
+        '<span class="cos-mini"><span style="background:' + th.light + '"></span><span style="background:' + th.dark + '"></span>' +
+        '<span style="background:' + th.dark + '"></span><span style="background:' + th.light + '"></span></span>' +
+        '<span class="cos-lbl">' + T("board_" + k) + (ok ? (k === cur ? " ✓" : "") : " 🔒Lv" + need) + "</span></button>";
+    }).join("") + "</div>";
+  el.querySelectorAll(".cos-swatch").forEach((b) => { if (!b.disabled) b.onclick = () => equipTheme(b.dataset.theme); });
+}
 function applyBoardTheme(name) {
   const th = BOARD_THEMES[name] || BOARD_THEMES.green;
   document.documentElement.style.setProperty("--light", th.light);
@@ -352,6 +390,7 @@ function switchTab(name) {
       b.classList.toggle("on", b.dataset.revswitch === section));
   }
   if (section === "review" && typeof renderBlunderDeck === "function") renderBlunderDeck();   // FEAT1
+  if (section === "learn" && typeof renderRepertoire === "function") renderRepertoire();       // FEAT4
   const navName = TAB_GROUP[section] || section;   // which top-level nav button lights up
   if (section !== "review" && typeof coachStopSpeak === "function") coachStopSpeak();  // stop the coach voice
   document.querySelectorAll("[data-tab]").forEach((b) =>
@@ -1810,6 +1849,7 @@ function aiEndGame() {
   // MODE3 서바이벌 래더 / MODE6 보스 러시: route to their own result flows.
   if (typeof LADDER !== "undefined" && LADDER.active) { return ladderEndGame(kind); }
   if (typeof BOSS !== "undefined" && BOSS.active) { return bossEndGame(kind); }
+  if (typeof EG !== "undefined" && EG.active) { return egEndGame(kind); }
 
   // Beating this level grants its title (if it's a new personal best).
   const T = (typeof t === "function") ? t : ((k) => k);
@@ -2348,6 +2388,124 @@ function openBossModal() {
 function closeBossModal() { const m = document.getElementById("bossModal"); if (m) m.classList.add("hidden"); }
 
 // =========================================================================== //
+// FEAT4: REPERTOIRE BUILDER (나의 오프닝) — save opening lines and drill them; the
+// drill quizzes you on each of your own moves along the line (client-side; the
+// FEN is reconstructed with the no-engine /api/legal, so no Stockfish per move).
+// =========================================================================== //
+function repLines() { try { return JSON.parse(localStorage.getItem("cc_repertoire") || "[]") || []; } catch (e) { return []; } }
+function saveRepLines(a) { try { localStorage.setItem("cc_repertoire", JSON.stringify(a.slice(0, 40))); } catch (e) {} if (typeof authSchedulePush === "function") authSchedulePush(); }
+function repSaveCurrentOpening() {
+  const cur = (typeof OP_PRACTICE !== "undefined") ? OP_PRACTICE[OPRAC.i] : null;
+  if (!cur || !cur.moves || !cur.moves.length) return;
+  const lines = repLines();
+  const name = cur.name || (t("rep_title") + " " + (lines.length + 1));
+  if (lines.some((l) => l.moves.join("") === cur.moves.join(""))) { if (typeof shareFlash === "function") shareFlash(t("rep_exists")); return; }
+  lines.push({ name, moves: cur.moves.slice(), added: dateStr() });
+  saveRepLines(lines);
+  if (typeof shareFlash === "function") shareFlash(t("rep_saved"));
+  renderRepertoire();
+}
+const REP = { active: false, moves: [], i: 0, name: "" };
+function startRepDrill(idx) {
+  const l = repLines()[idx]; if (!l || !l.moves.length) return;
+  REP.active = true; REP.moves = l.moves.slice(); REP.i = 0; REP.name = l.name;
+  if (!PZ.baseFen) PZ.baseFen = REVIEW_START_FEN;
+  switchTab("puzzle");
+  if (typeof metric === "function") metric("rep_drill");
+  loadRepMove();
+}
+async function loadRepMove() {
+  while (REP.i < REP.moves.length && (REP.i % 2 !== 0)) REP.i++;   // quiz only the user's (White) moves
+  if (REP.i >= REP.moves.length) return repFinish();
+  const before = REP.moves.slice(0, REP.i);
+  let st; try { st = await api("/api/legal", { moves: before }); } catch (e) { return repFinish(); }
+  const sol = REP.moves[REP.i];
+  const adhoc = { fen: st.fen, solution: [sol], solutionSan: [st.san && st.san.length ? "" : sol], mateIn: 0, theme: "tactic", level: -1, rating: null };
+  loadPuzzle(-1, { force: true, adhoc, repdrill: true });
+  $("pzPrompt").innerHTML = t("rep_prompt").replace("{name}", escapeHtml(REP.name));
+  setStatus("pzFeedback", t("rep_your_move"), false);
+}
+function repSolved() {
+  REP.i += 2;   // consume the user's move + the line's reply
+  if (REP.i < REP.moves.length) loadRepMove(); else repFinish();
+}
+function repFinish() {
+  REP.active = false;
+  showResult({ kind: "win", icon: "📚", title: t("rep_done"), sub: t("rep_done_s"),
+    actions: [{ label: t("rep_back"), primary: true, onClick: () => { hideResult(); switchTab("learn"); } }] });
+}
+function renderRepertoire() {
+  const el = document.getElementById("repCard"); if (!el) return;
+  const lines = repLines();
+  if (!lines.length) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = '<div class="rep-head"><b>📚 ' + t("rep_title") + "</b></div>" +
+    '<div class="rep-list">' + lines.map((l, i) =>
+      '<div class="rep-row"><span class="rep-name">' + escapeHtml(l.name) + "</span>" +
+      '<span class="rep-len">' + l.moves.length + "</span>" +
+      '<button class="rep-go" data-rep="' + i + '">' + t("rep_drill") + "</button>" +
+      '<button class="rep-del" data-repdel="' + i + '" aria-label="delete">✕</button></div>").join("") + "</div>";
+  el.querySelectorAll(".rep-go").forEach((b) => b.onclick = () => startRepDrill(+b.dataset.rep));
+  el.querySelectorAll(".rep-del").forEach((b) => b.onclick = () => { const a = repLines(); a.splice(+b.dataset.repdel, 1); saveRepLines(a); renderRepertoire(); });
+}
+
+// =========================================================================== //
+// MODE7: ENDGAME LADDER (엔드게임 사다리) — theoretical winning endgames against a
+// top-strength engine (few pieces = fast even on the free tier). Reuses the AI
+// game from a custom start FEN; a win unlocks the next rung.
+// =========================================================================== //
+const ENDGAMES = [
+  { id: "kqvk", ic: "♕", fen: "4k3/8/4K3/8/8/8/8/6Q1 w - - 0 1", level: 12 },
+  { id: "krvk", ic: "♖", fen: "4k3/8/4K3/8/8/8/8/6R1 w - - 0 1", level: 12 },
+  { id: "kpvk", ic: "♙", fen: "8/8/8/3k4/8/3P4/3K4/8 w - - 0 1", level: 15 },
+  { id: "kbnvk", ic: "♗", fen: "4k3/8/4K3/8/8/8/8/5BN1 w - - 0 1", level: 15 },
+];
+const EG = { active: false, i: 0 };
+function egCleared() { return +(localStorage.getItem("cc_endgame_cleared") || 0); }
+function startEndgame(i) {
+  if (i >= ENDGAMES.length) return;
+  EG.active = true; EG.i = i;
+  const sel = $("aiLevel"); if (sel) sel.value = String(ENDGAMES[i].level);
+  const st = $("aiStyle"); if (st) st.value = "default";
+  const c960 = $("ai960"); if (c960) c960.checked = false;
+  const col = $("aiColor"); if (col) col.value = "w";
+  switchTab("ai");
+  if (typeof metric === "function") metric("endgame_run");
+  aiStart({ startFen: ENDGAMES[i].fen });
+  if (typeof shareFlash === "function") setTimeout(() => shareFlash(ENDGAMES[i].ic + " " + t("eg_" + ENDGAMES[i].id)), 500);
+}
+function egEndGame(kind) {
+  EG.active = false;
+  const T = (typeof t === "function") ? t : ((k) => k);
+  if (kind === "win") {
+    if (EG.i >= egCleared()) localStorage.setItem("cc_endgame_cleared", String(EG.i + 1));
+    if (typeof xpAdd === "function") xpAdd(15);
+    const hasNext = EG.i + 1 < ENDGAMES.length;
+    showResult({ kind: "win", icon: ENDGAMES[EG.i].ic, title: T("eg_won").replace("{name}", T("eg_" + ENDGAMES[EG.i].id)), sub: hasNext ? T("eg_unlock") : T("eg_alldone"),
+      actions: [
+        hasNext ? { label: T("eg_next"), primary: true, onClick: () => { hideResult(); startEndgame(EG.i + 1); } } : { label: T("exit_btn"), primary: true, onClick: () => exitImmersive() },
+        { label: T("eg_list"), onClick: () => { hideResult(); exitImmersive(); openEndgameModal(); } },
+      ] });
+    return;
+  }
+  showResult({ kind: "loss", icon: "📕", title: T("eg_fail"), sub: T("eg_retry"),
+    actions: [{ label: T("eg_again"), primary: true, onClick: () => { hideResult(); startEndgame(EG.i); } }, { label: T("exit_btn"), onClick: () => exitImmersive() }] });
+}
+function openEndgameModal() {
+  const m = document.getElementById("egModal"); if (!m) return;
+  const grid = document.getElementById("egGrid"); if (!grid) return;
+  const cleared = egCleared();
+  grid.innerHTML = ENDGAMES.map((e, i) => {
+    const done = i < cleared;
+    return '<button class="boss-cell ' + (done ? "cleared" : "current") + '" data-eg="' + i + '"><span class="boss-ic">' + e.ic + "</span>" +
+      '<span class="boss-name">' + t("eg_" + e.id) + '</span><span class="boss-lv">' + (done ? "✓" : "Lv " + e.level) + "</span></button>";
+  }).join("");
+  grid.querySelectorAll("[data-eg]").forEach((c) => c.onclick = () => { closeEndgameModal(); startEndgame(+c.dataset.eg); });
+  m.classList.remove("hidden");
+}
+function closeEndgameModal() { const m = document.getElementById("egModal"); if (m) m.classList.add("hidden"); }
+
+// =========================================================================== //
 // DAILY PUZZLE + STREAK CALENDAR — one puzzle a day (same for everyone, chosen
 // by the date), a consecutive-day streak, and a month calendar of solved days.
 // A strong return hook: miss a day and the streak resets.
@@ -2575,7 +2733,7 @@ async function loadPuzzle(idx, opts) {
   // run it through the tactical single-move check as a "guess the move" quiz.
   if (opts && opts.adhoc) {
     const p = opts.adhoc;
-    PZ.adhoc = p; PZ.quiz = !!opts.quiz; PZ.bdrill = !!opts.bdrill; PZ.rxActive = false;
+    PZ.adhoc = p; PZ.quiz = !!opts.quiz; PZ.bdrill = !!opts.bdrill; PZ.repdrill = !!opts.repdrill; PZ.rxActive = false;
     PZ.idx = -1; PZ.fails = 0; PZ.beginner = false; PZ.revealed = false; PZ.locked = false;
     PZ.baseFen = p.fen; PZ.fen = p.fen; PZ.mateIn = 0; PZ.movesLeft = 0;
     PZ.line = p.solution || []; PZ.played = []; PZ.theme = p.theme || "tactic";
@@ -2586,7 +2744,7 @@ async function loadPuzzle(idx, opts) {
     renderPzBoard();
     return;
   }
-  PZ.adhoc = null; PZ.quiz = false; PZ.bdrill = false;
+  PZ.adhoc = null; PZ.quiz = false; PZ.bdrill = false; PZ.repdrill = false;
   if (!(opts && opts.rx)) PZ.rxActive = false;   // leaving a prescription session
   if (idx < 0 || idx >= PZ.list.length) return;
   PZ.idx = idx; PZ.cat = pzCatOf(idx);
@@ -2787,7 +2945,7 @@ function pzSolved() {
   if (typeof STORM !== "undefined" && STORM.active) return stormSolved();
   // ADD3: ad-hoc quiz position solved → advance the guess-the-move session and
   // stop (no PZ.list entry, no rating/streak/daily side effects).
-  if (PZ.adhoc) { PZ.adhoc = null; if (PZ.quiz) { PZ.quiz = false; return qzSolved(); } if (PZ.bdrill) { PZ.bdrill = false; return bdSolved(); } return; }
+  if (PZ.adhoc) { PZ.adhoc = null; if (PZ.quiz) { PZ.quiz = false; return qzSolved(); } if (PZ.bdrill) { PZ.bdrill = false; return bdSolved(); } if (PZ.repdrill) { PZ.repdrill = false; return repSolved(); } return; }
   const p = PZ.list[PZ.idx];
   const firstSolve = !PZ.solved.has(p.level);
   PZ.solved.add(p.level); pzSaveSolved(); renderPzGrid();
@@ -2926,6 +3084,9 @@ if ($("ladderBtn")) $("ladderBtn").onclick = () => startLadder();     // MODE3
 if ($("bossBtn")) $("bossBtn").onclick = () => openBossModal();       // MODE6
 if ($("bossClose")) $("bossClose").onclick = () => closeBossModal();
 document.querySelectorAll("[data-odds]").forEach((b) => { b.onclick = () => startOdds(b.dataset.odds); });   // MODE4
+if ($("endgameBtn")) $("endgameBtn").onclick = () => openEndgameModal();   // MODE7
+if ($("egClose")) $("egClose").onclick = () => closeEndgameModal();
+if ($("opSaveBtn")) $("opSaveBtn").onclick = () => repSaveCurrentOpening();   // FEAT4
 $("pzPrev").onclick = () => loadPuzzle(PZ.idx - 1);
 $("pzNext").onclick = () => loadPuzzle(PZ.idx + 1);
 $("pzReset").onclick = () => loadPuzzle(PZ.idx);
@@ -3740,6 +3901,7 @@ function collectProgress() {
     pzRating: (typeof pzRatingGet === "function") ? pzRatingGet() : 0,
     referred_by: localStorage.getItem("cc_ref") || undefined,   // ADD4: attribution
     blunders: (typeof blunderCards === "function") ? blunderCards() : undefined,   // FEAT1
+    repertoire: (typeof repLines === "function") ? repLines() : undefined,          // FEAT4
   };
 }
 
@@ -3776,6 +3938,7 @@ function applyProgress(p) {
   if (typeof p.xp === "number") localStorage.setItem("cc_xp", String(Math.max(p.xp, (typeof xpGet === "function") ? xpGet() : 0)));
   if (typeof p.pzRating === "number" && p.pzRating > 0) localStorage.setItem("cc_pz_rating", String(Math.round(p.pzRating)));
   if (Array.isArray(p.blunders)) localStorage.setItem("cc_blunders", JSON.stringify(p.blunders.slice(-200)));   // FEAT1
+  if (Array.isArray(p.repertoire)) localStorage.setItem("cc_repertoire", JSON.stringify(p.repertoire.slice(0, 40)));   // FEAT4
   if (p.reviewQueue && typeof p.reviewQueue === "object") {   // merge review queue (keep more-graduated box)
     const cur = (typeof reviewQueue === "function") ? reviewQueue() : {};
     const merged = { ...cur };
@@ -3813,7 +3976,8 @@ function clearLocalProgress() {
   ["cc_rating3", "cc_history", "cc_best_level", "cc_streak_best", "cc_pz_streak",
    "cc_pz_streak_best", "cc_puzzles_solved", "cc_achievements", "cc_daily_solved",
    "cc_freeze_dates", "cc_streak_miles", "cc_review_queue", "cc_xp", "cc_quests", "cc_skill",
-   "cc_pz_rating", "cc_league", "cc_blunders",
+   "cc_pz_rating", "cc_league", "cc_blunders", "cc_repertoire",
+   "cc_boss_cleared", "cc_endgame_cleared", "cc_ladder_best", "cc_storm_best",
   ].forEach((k) => localStorage.removeItem(k));
   if (typeof PZ !== "undefined") PZ.solved = new Set();
 }
@@ -4411,6 +4575,7 @@ function renderJourney() {
 
 function renderGrowth() {
   if (typeof renderProfilePanel === "function") renderProfilePanel();   // ADD2/ADD5
+  if (typeof renderCosmetics === "function") renderCosmetics();         // FEAT7
   if (typeof renderPersonality === "function") renderPersonality();     // FEAT8
   if (typeof renderRivals === "function") renderRivals();               // FEAT6
   if (typeof renderStudyPath === "function") renderStudyPath();         // FEAT5

@@ -1390,6 +1390,28 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 .hub-resume .ht-txt b{ font-size:15px; font-weight:800; line-height:1.2; }
 .hub-resume .ht-sub{ font-size:12px; color:var(--muted); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .hub-resume .ht-go{ flex:0 0 auto; font-size:18px; color:var(--muted); }
+/* FEAT7: Cosmetics collection */
+#cosmeticsCard .cos-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+#cosmeticsCard .cos-count{ font-weight:800; color:var(--accent); font-variant-numeric:tabular-nums; }
+#cosmeticsCard .cos-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); gap:9px; }
+#cosmeticsCard .cos-swatch{ display:flex; flex-direction:column; align-items:center; gap:5px; padding:8px 6px; border-radius:var(--r-md);
+  border:1px solid var(--line2); background:var(--panel2); color:var(--ink); cursor:pointer; transition:.15s; }
+#cosmeticsCard .cos-swatch:hover:not(:disabled){ border-color:var(--accent); }
+#cosmeticsCard .cos-swatch.on{ border-color:var(--accent); box-shadow:0 0 0 2px rgba(79,184,119,.25); }
+#cosmeticsCard .cos-swatch.locked{ opacity:.55; cursor:not-allowed; }
+#cosmeticsCard .cos-mini{ display:grid; grid-template-columns:1fr 1fr; width:38px; height:38px; border-radius:6px; overflow:hidden; }
+#cosmeticsCard .cos-mini span{ display:block; }
+#cosmeticsCard .cos-lbl{ font-size:11px; font-weight:700; }
+/* FEAT4: Repertoire */
+.rep-card{ margin-top:12px; }
+.rep-card .rep-head{ margin-bottom:8px; }
+.rep-card .rep-list{ display:flex; flex-direction:column; gap:7px; }
+.rep-card .rep-row{ display:flex; align-items:center; gap:8px; }
+.rep-card .rep-name{ flex:1; font-size:var(--fs-sm); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rep-card .rep-len{ flex:0 0 auto; font-size:11px; color:var(--muted); }
+.rep-card .rep-go{ flex:0 0 auto; border:1px solid var(--accent); color:var(--accent); background:transparent; border-radius:var(--r-pill);
+  padding:5px 12px; font-weight:800; font-size:12px; cursor:pointer; }
+.rep-card .rep-del{ flex:0 0 auto; border:none; background:transparent; color:var(--faint); cursor:pointer; font-size:14px; }
 /* FEAT6: Rivals */
 #rivalsCard .rv2-head{ margin-bottom:10px; }
 #rivalsCard .rv2-list{ display:flex; flex-direction:column; gap:7px; }
