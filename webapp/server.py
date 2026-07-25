@@ -303,6 +303,12 @@ def privacy():
                         headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/terms")
+def terms():
+    return FileResponse(os.path.join(STATIC, "terms.html"),
+                        headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/manifest.webmanifest")
 def manifest():
     return FileResponse(os.path.join(STATIC, "manifest.webmanifest"),

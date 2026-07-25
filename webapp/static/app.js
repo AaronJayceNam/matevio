@@ -3026,10 +3026,21 @@ async function authSubmit(mode) {
   const id = ($("authId").value || "").trim().normalize("NFC");
   const pw = ($("authPw").value || "").normalize("NFC");
   if (!id || !pw) { setStatus("authStatus", t("auth_need"), true); return; }
+  // signup requires agreeing to the Terms + Privacy Policy
+  if (mode === "register" && $("authConsent") && !$("authConsent").checked) {
+    setStatus("authStatus", t("auth_consent_req"), true);
+    const row = $("authConsentRow"); if (row) { row.classList.remove("shake"); void row.offsetWidth; row.classList.add("shake"); }
+    return;
+  }
   setStatus("authStatus", mode === "register" ? t("auth_registering") : t("auth_logging"));
   try {
     const email = ($("authEmail") ? ($("authEmail").value || "").trim() : "");
-    const body = mode === "register" ? { id, pw, email, progress: collectProgress() } : { id, pw };
+    let body;
+    if (mode === "register") {
+      const prog = collectProgress();
+      prog.agreedTermsAt = new Date().toISOString();   // record consent (proof) with the account
+      body = { id, pw, email, progress: prog };
+    } else { body = { id, pw }; }
     const r = await api("/api/auth/" + mode, body);
     authSetSession(r.id, r.token, r.progress);
     $("authModal").classList.add("hidden");
