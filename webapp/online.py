@@ -260,8 +260,16 @@ class Lobby:
             if ws in self.games:
                 return await _send(ws, {"type": "error", "message": "이미 대국 중입니다."})
             self._drop_from_lobby(ws)          # re-queue cleanly
-            if self.queue:
-                other = self.queue.pop(0)
+            # A re-tapping player may still have a not-yet-detected dead socket
+            # sitting in the queue (proxy disconnects take seconds to register).
+            # Drop any same-account entry so a player can NEVER be matched against
+            # themselves — that self-match was a free rating win.
+            if uid is not None:
+                self.queue = [e for e in self.queue if e[3] != uid]
+            # match the first waiting player of a DIFFERENT account
+            idx = next((i for i, e in enumerate(self.queue) if uid is None or e[3] != uid), None)
+            if idx is not None:
+                other = self.queue.pop(idx)
                 return await self._start_game(other, (ws, name, rating, uid))
             self.queue.append((ws, name, rating, uid))
         await _send(ws, {"type": "waiting"})
@@ -285,6 +293,9 @@ class Lobby:
             if owner[0] is ws:
                 self.rooms[code] = owner       # can't join your own room
                 return await _send(ws, {"type": "error", "message": "자기 방에는 참가할 수 없습니다."})
+            if uid is not None and owner[3] == uid:
+                self.rooms[code] = owner       # same account on both seats — no self-play
+                return await _send(ws, {"type": "error", "message": "자기 자신과는 대국할 수 없습니다."})
             self._drop_from_lobby(ws)
             await self._start_game(owner, (ws, name, rating, uid))
 

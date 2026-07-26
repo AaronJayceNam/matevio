@@ -4331,18 +4331,14 @@ function ogEnd(result, reason, rInfo) {
   // The SERVER is authoritative: it sends this player's {before, after, delta}
   // in the end message. We only fall back to a client estimate if it's absent
   // (e.g. a guest game, or an older server).
+  // Rating is SERVER-AUTHORITATIVE: apply it ONLY from the end message's rInfo.
+  // We never invent a client-side rating anymore — the old fallback let a
+  // no-rating game (e.g. a same-account self-match the server declines to rate)
+  // still bump the local rating, which was an exploit. No rInfo → no change.
   let badge = null;
-  if (!OG.ratingApplied) {
+  if (!OG.ratingApplied && rInfo && typeof rInfo.after === "number") {
     OG.ratingApplied = true;
-    let before, newRating, applied;
-    if (rInfo && typeof rInfo.after === "number") {
-      before = rInfo.before; newRating = rInfo.after; applied = rInfo.delta;
-    } else {
-      before = myRating();
-      const score = kind === "win" ? 1 : kind === "loss" ? 0 : 0.5;
-      newRating = Math.max(0, before + eloDelta(before, OG.oppRating, score));
-      applied = newRating - before;   // what actually changed (0-floor aware)
-    }
+    const before = rInfo.before, newRating = rInfo.after, applied = rInfo.delta;
     setMyRating(newRating);
     addHistory({ mode: "online", opponent: OG.opponent || t("og_opp"), result: kind, ratingDelta: applied,
       moves: [...movesCopy], white, black });
