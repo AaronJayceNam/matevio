@@ -33,7 +33,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=135">
+<link rel="stylesheet" href="/static/style.css?v=136">
 </head>
 <body>
 
@@ -92,6 +92,20 @@
   </div>
   <svg id="triBoard" viewBox="0 0 440 470" xmlns="http://www.w3.org/2000/svg" aria-label="3-player board"></svg>
   <div class="tri-help" data-i18n="tri_help">같은 기기에서 3명이 번갈아 둡니다 · 시계방향 · 먼저 체크메이트하면 즉시 우승</div>
+</div>
+
+<!-- Cross (plus-shaped) 3/4-player chess overlay -->
+<div class="tri-game hidden" id="cxGame">
+  <div class="tri-top">
+    <div class="tri-info" id="cxInfo"></div>
+    <div class="tri-actions">
+      <button class="ghost" id="cxNew3Btn" data-i18n="cx_new3">새 3인</button>
+      <button class="ghost" id="cxNew4Btn" data-i18n="cx_new4">새 4인</button>
+      <button class="ghost" id="cxCloseBtn" data-i18n="landing_skip">닫기</button>
+    </div>
+  </div>
+  <svg id="cxBoard" viewBox="0 0 476 476" xmlns="http://www.w3.org/2000/svg" aria-label="cross board"></svg>
+  <div class="tri-help" data-i18n="cx_help">십자(+) 판 · 시계방향으로 진행 · 폰은 가운데로 전진 · 먼저 체크메이트하면 즉시 우승</div>
 </div>
 
 <!-- MODE2: correspondence game board -->
@@ -298,12 +312,15 @@
             <div id="corrLogin" class="setdesc" data-i18n="corr_login" hidden>로그인하면 한 수 대국을 할 수 있어요.</div>
             <div class="corr-list" id="corrList"></div>
           </div>
-          <!-- 3-player Trident: online auto-match -->
+          <!-- Cross (plus-shaped) 3/4-player chess: online auto-match -->
           <div class="og-friend" style="margin-top:14px">
-            <h3 data-i18n="tri3_title">♛ 3인 체스 (베타)</h3>
-            <p class="setdesc" data-i18n="tri3_desc" style="margin:0 0 8px">삼각 96칸 보드에서 세 명이 시계방향으로 두고, 먼저 체크메이트하는 사람이 즉시 우승해요.</p>
-            <button class="primary" id="triOnlineBtn" style="width:100%" data-i18n="tri_online_start">🌐 3인 온라인 대국 — 3명 자동 매칭 (베타)</button>
-            <p class="setdesc" data-i18n="tri3_note" style="margin:8px 0 0">사람이 부족하면 홈 화면의 🤖 <b>나 vs AI 2명</b> 모드로 혼자서도 연습할 수 있어요.</p>
+            <h3 data-i18n="cx_title">♛ 십자 체스 (3·4인 · 베타)</h3>
+            <p class="setdesc" data-i18n="cx_desc" style="margin:0 0 8px">십자(+) 판에서 시계방향으로 두고, 먼저 체크메이트하는 사람이 즉시 우승해요. 3인은 한 팔을 비우고, 4인은 네 팔 모두 채웁니다.</p>
+            <div class="cx-online-row" style="display:flex; gap:8px">
+              <button class="primary" id="cxOnlineBtn3" style="flex:1" data-i18n="cx_online3">🌐 3인 온라인</button>
+              <button class="primary" id="cxOnlineBtn4" style="flex:1" data-i18n="cx_online4">🌐 4인 온라인</button>
+            </div>
+            <p class="setdesc" data-i18n="cx_note" style="margin:8px 0 0">사람이 부족하면 홈 화면의 🤖 <b>나 vs AI</b> 모드로 혼자서도 연습할 수 있어요.</p>
           </div>
         </div>
       </div>
@@ -501,8 +518,9 @@
           <button class="ai-mode-btn" id="ladderBtn" data-i18n="ladder_start">🪜 서바이벌 래더 — 한 목숨으로 레벨 등반</button>
           <button class="ai-mode-btn" id="bossBtn" data-i18n="boss_start">🐲 보스 러시 — 보스 봇 정복</button>
           <button class="ai-mode-btn" id="endgameBtn" data-i18n="eg_start">♟️ 엔드게임 사다리 — 이론적 끝내기 훈련</button>
-          <button class="ai-mode-btn" id="triBtn" data-i18n="tri_start">♛ 3인 체스 (핫시트 · 베타)</button>
-          <button class="ai-mode-btn" id="triAiBtn" data-i18n="tri_ai_start">🤖 3인 체스 — 나 vs AI 2명 (베타)</button>
+          <button class="ai-mode-btn" id="cxAiBtn3" data-i18n="cx_ai3">🤖 십자 체스 — 나 vs AI · 3인 (베타)</button>
+          <button class="ai-mode-btn" id="cxAiBtn4" data-i18n="cx_ai4">🤖 십자 체스 — 나 vs AI · 4인 (베타)</button>
+          <button class="ai-mode-btn" id="cxHotBtn" data-i18n="cx_hot">♛ 십자 체스 — 핫시트 (한 기기 3·4인)</button>
           <div class="odds-h" data-i18n="odds_h">🎯 기물 접기 — AI가 접고 시작 (내가 유리)</div>
           <div class="odds-row">
             <button class="odds-btn" data-odds="n_up" data-i18n="odds_n">나이트</button>
@@ -945,8 +963,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=135"></script>
-<script src="/static/app.js?v=135"></script>
+<script src="/static/i18n.js?v=136"></script>
+<script src="/static/app.js?v=136"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {

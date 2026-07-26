@@ -733,6 +733,11 @@ register_trident(app)
 # 3-player Trident online lobby (WebSocket /ws3)
 from webapp.trident_online import register_trident_online  # noqa: E402
 register_trident_online(app)
+# Cross (plus-shaped) 3/4-player chess: engine endpoints + online lobby (/wsc)
+from webapp.cross import register_cross  # noqa: E402
+register_cross(app)
+from webapp.cross_online import register_cross_online  # noqa: E402
+register_cross_online(app)
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 

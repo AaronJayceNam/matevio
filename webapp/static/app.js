@@ -2606,6 +2606,186 @@ function triRender() {
     info.innerHTML = msg;
   }
 }
+
+// =========================================================================== #
+// CROSS — plus-shaped 3/4-player chess (upright squares; the readable board)
+// =========================================================================== #
+const CX = { board: null, turn: 0, active: [], n: 4, moves: [], over: false, winner: null,
+  sel: null, last: null, busy: false, online: false, myseat: null, names: null, ws: null, ai: null };
+const CX_N = 14, CX_U = 34;                       // 14x14 grid, 34px cells
+const CX_FILL = ["#f4f5f7", "#e0544c", "#20242c", "#3f7fd0"];   // seat 0..3 armies
+const CX_STROKE = ["#2a2f38", "#ffd9d5", "#c9d2df", "#dcebff"];
+const CX_DOT = ["#2a2f3855", "#e0544c", "#20242c", "#3f7fd0"];  // home-edge tint per seat
+function cxValid(x, y) {
+  if (x < 0 || x >= CX_N || y < 0 || y >= CX_N) return false;
+  return (x >= 3 && x <= 10) || (y >= 3 && y <= 10);       // plus mask (corners cut)
+}
+function cxIdx(x, y) { return y * CX_N + x; }
+function cxXY(i) { return [i % CX_N, Math.floor(i / CX_N)]; }
+// which seat "owns" a home cell (for the colored edge) — outer two ranks of each arm
+function cxHomeSeat(x, y) {
+  if (y >= 12) return 0; if (x <= 1) return 1; if (y <= 1) return 2; if (x >= 12) return 3;
+  return -1;
+}
+function cxActiveHas(s) { return CX.active.indexOf(s) >= 0; }
+
+async function cxNew(n) {
+  CX.sel = null; CX.last = null; CX.busy = true;
+  try { const r = await api("/api/cross/new", { n }); Object.assign(CX, { board: r.board, turn: r.turn, active: r.active, n: r.n, moves: r.moves, over: r.over, winner: r.winner }); }
+  catch (e) { CX.busy = false; return; }
+  CX.busy = false; cxRender();
+}
+function cxClose() {
+  const m = document.getElementById("cxGame"); if (m) m.classList.add("hidden");
+  if (CX.ws) { try { CX.ws.close(); } catch (e) {} CX.ws = null; }
+  CX.online = false; CX.myseat = null; CX.ai = null; CX.names = null;
+}
+async function cxOpen(n) {                          // hotseat: everyone local
+  const m = document.getElementById("cxGame"); if (m) m.classList.remove("hidden");
+  CX.online = false; CX.ai = null; CX.names = null; CX.n = n;
+  await cxNew(n);
+  if (typeof metric === "function") metric("cross_hotseat_" + n);
+}
+async function cxStartVsAI(n) {                     // human = first active seat, rest bots
+  const m = document.getElementById("cxGame"); if (m) m.classList.remove("hidden");
+  const T = (typeof t === "function") ? t : ((k) => k);
+  CX.online = false; CX.n = n;
+  await cxNew(n);
+  const human = CX.active[0];
+  CX.ai = CX.active.filter((s) => s !== human);    // list of AI seat ids
+  CX.names = {}; CX.names[human] = T("tri_me");
+  for (const s of CX.ai) CX.names[s] = "🤖";
+  if (typeof metric === "function") metric("cross_vs_ai_" + n);
+  cxRender(); cxMaybeAI();
+}
+function cxOnlineOpen(n) {
+  const m = document.getElementById("cxGame"); if (m) m.classList.remove("hidden");
+  const T = (typeof t === "function") ? t : ((k) => k);
+  Object.assign(CX, { online: true, myseat: null, ai: null, board: null, over: false, winner: null, sel: null, last: null, busy: false, names: null, n });
+  cxSetStatus(T("tri_connecting"));
+  let ws; try { ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/wsc"); }
+  catch (e) { cxSetStatus(T("tri_conn_fail")); return; }
+  CX.ws = ws;
+  ws.onopen = () => { try { ws.send(JSON.stringify({ type: "quick", n: CX.n, name: (AUTH && AUTH.id) || "플레이어" })); } catch (e) {} };
+  ws.onmessage = (ev) => { let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; } cxOnMsg(msg); };
+  ws.onclose = () => { if (CX.online && !CX.over && CX.myseat == null) cxSetStatus(T("tri_conn_fail")); };
+  if (typeof metric === "function") metric("cross_online_" + n);
+}
+function cxSetStatus(html) { const el = document.getElementById("cxInfo"); if (el) el.innerHTML = html; }
+function cxApplyState(st, last) {
+  Object.assign(CX, { board: st.board, turn: st.turn, active: st.active || CX.active, n: st.n || CX.n, moves: st.moves || [], over: !!st.over, winner: st.winner, last: last || null, sel: null, busy: false });
+  cxRender();
+}
+function cxOnMsg(msg) {
+  const T = (typeof t === "function") ? t : ((k) => k);
+  if (msg.type === "waiting") cxSetStatus("⏳ " + T("tri_waiting").replace("{have}", msg.have || 1).replace("{need}", msg.need || CX.n));
+  else if (msg.type === "start") { CX.myseat = msg.seat; CX.names = null; if (msg.names) { CX.names = {}; msg.active.forEach((sid, i) => { CX.names[sid] = msg.names[i]; }); } cxApplyState(msg.state); }
+  else if (msg.type === "state") cxApplyState(msg.state, msg.last);
+  else if (msg.type === "end") { cxApplyState(msg.state); CX.over = true; CX.winner = msg.winner; cxRender(); }
+  else if (msg.type === "aborted") { CX.over = true; cxSetStatus("⚠️ " + T("tri_aborted")); }
+  else if (msg.type === "error") { CX.busy = false; cxRender(); }
+}
+function cxCanControl() {
+  if (CX.over || CX.busy) return false;
+  if (CX.online) return CX.myseat != null && CX.turn === CX.myseat;
+  if (CX.ai) return CX.ai.indexOf(CX.turn) < 0;    // human controls non-AI seats
+  return true;                                     // hotseat
+}
+function cxLegalTargets() {
+  if (CX.sel == null) return [];
+  return CX.moves.filter((m) => m[0] === CX.sel).map((m) => m[1]);
+}
+function cxClick(i) {
+  if (!cxCanControl()) return;
+  const occ = CX.board[i];
+  if (CX.sel != null) {
+    if (cxLegalTargets().includes(i)) return cxMove(CX.sel, i);
+    if (occ && occ[0] === CX.turn) { CX.sel = i; return cxRender(); }
+    CX.sel = null; return cxRender();
+  }
+  if (occ && occ[0] === CX.turn) { CX.sel = i; cxRender(); }
+}
+async function cxMove(frm, to) {
+  if (CX.online) { CX.sel = null; CX.busy = true; try { CX.ws.send(JSON.stringify({ type: "move", frm, to })); } catch (e) {} return; }
+  CX.busy = true; CX.sel = null;
+  let r; try { r = await api("/api/cross/move", { board: CX.board, turn: CX.turn, n: CX.n, frm, to }); } catch (e) { CX.busy = false; return; }
+  CX.busy = false;
+  if (!r || !r.ok) { cxRender(); return; }
+  Object.assign(CX, { board: r.board, turn: r.turn, active: r.active, moves: r.moves, over: r.over, winner: r.winner, last: r.last || null });
+  cxRender(); cxMaybeAI();
+}
+function cxPickAI() {
+  const ms = CX.moves; if (!ms || !ms.length) return null;
+  let best = [], bestScore = -1;
+  for (const mv of ms) {
+    const victim = CX.board[mv[1]];
+    let score = victim ? (TRI_VAL[victim[1]] || 1) * 10 : 0;
+    const mover = CX.board[mv[0]];
+    if (mover && mover[1] === "P") score += 1;
+    score += Math.floor(triRand() * 3);
+    if (score > bestScore) { bestScore = score; best = [mv]; }
+    else if (score === bestScore) best.push(mv);
+  }
+  return best[Math.floor(triRand() * best.length)];
+}
+function cxMaybeAI() {
+  if (!CX.ai || CX.over || CX.online) return;
+  if (CX.ai.indexOf(CX.turn) < 0) return;          // human's turn
+  CX.busy = true; cxRender();
+  setTimeout(() => {
+    if (!CX.ai || CX.over) { CX.busy = false; return; }
+    const mv = cxPickAI(); CX.busy = false;
+    if (mv) cxMove(mv[0], mv[1]);
+  }, 600);
+}
+function cxRender() {
+  const svg = document.getElementById("cxBoard"); if (!svg || !CX.board) return;
+  const T = (typeof t === "function") ? t : ((k) => k);
+  const targets = cxLegalTargets();
+  const U = CX_U, sz = CX_N * U;
+  svg.setAttribute("viewBox", "0 0 " + sz + " " + sz);
+  let s = "";
+  for (let i = 0; i < CX_N * CX_N; i++) {
+    const [x, y] = cxXY(i); if (!cxValid(x, y)) continue;
+    const px = x * U, py = y * U;
+    const light = (x + y) % 2 === 0;
+    let fill = light ? "#eef1e4" : "#7f9b5b";
+    if (CX.last && (i === CX.last[0] || i === CX.last[1])) fill = light ? "#f4e58c" : "#c7bb52";
+    if (i === CX.sel) fill = "#ffcf5a";
+    s += '<rect x="' + px + '" y="' + py + '" width="' + U + '" height="' + U + '" fill="' + fill + '" stroke="#00000018" stroke-width="0.5" data-cx="' + i + '"/>';
+    // colored edge on each active seat's outer home rank
+    const hs = cxHomeSeat(x, y);
+    if (hs >= 0 && cxActiveHas(hs) && (y === 13 || y === 0 || x === 0 || x === 13)) {
+      s += '<rect x="' + (px + 1) + '" y="' + (py + 1) + '" width="' + (U - 2) + '" height="' + (U - 2) + '" fill="none" stroke="' + CX_DOT[hs] + '" stroke-width="2" pointer-events="none"/>';
+    }
+  }
+  for (const tg of targets) {
+    const [x, y] = cxXY(tg); const cx = x * U + U / 2, cy = y * U + U / 2;
+    const cap = CX.board[tg] ? 9 : 5;
+    s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + cap + '" fill="#00000033" pointer-events="none"/>';
+  }
+  for (let i = 0; i < CX_N * CX_N; i++) {
+    const occ = CX.board[i]; if (!occ) continue;
+    const [x, y] = cxXY(i); const cx = x * U + U / 2, cy = y * U + U / 2;
+    s += '<text x="' + cx + '" y="' + (cy + 9) + '" text-anchor="middle" font-size="26" ' +
+      'fill="' + CX_FILL[occ[0]] + '" stroke="' + CX_STROKE[occ[0]] + '" stroke-width="0.9" pointer-events="none">' +
+      TRI_GLYPH[occ[1].toLowerCase()] + "</text>";
+  }
+  svg.innerHTML = s;
+  svg.querySelectorAll("[data-cx]").forEach((el) => { el.onclick = () => cxClick(+el.dataset.cx); });
+  const info = document.getElementById("cxInfo");
+  if (info) {
+    const who = (sid) => (CX.names && CX.names[sid]) ? escapeHtml(CX.names[sid]) : T("cx_c" + sid);
+    let msg;
+    if (CX.over) msg = (CX.winner == null) ? ("🏳️ " + T("tri_draw")) : ("🏆 " + T("tri_win").replace("{who}", who(CX.winner)));
+    else {
+      msg = '<span class="tri-turn" style="color:' + CX_FILL[CX.turn] + ';-webkit-text-stroke:0.6px ' + CX_STROKE[CX.turn] + '">●</span> ' + T("tri_turn").replace("{who}", who(CX.turn));
+      if (CX.online && CX.myseat != null) msg += ' · <span style="color:' + CX_FILL[CX.myseat] + '">' + T((CX.turn === CX.myseat) ? "tri_your_move" : "tri_seat_wait").replace("{who}", who(CX.myseat)) + "</span>";
+    }
+    info.innerHTML = msg;
+  }
+}
+
 function renderCorrBoard() {
   const st = CORR.state; const board = document.getElementById("corrBoard"); if (!board || !st) return;
   const T = (typeof t === "function") ? t : ((k) => k);
@@ -3502,6 +3682,16 @@ if ($("egClose")) $("egClose").onclick = () => closeEndgameModal();
 if ($("triBtn")) $("triBtn").onclick = () => triOpen();                     // 3-player hotseat
 if ($("triAiBtn")) $("triAiBtn").onclick = () => triStartVsAI();            // 3-player vs 2 bots
 if ($("triOnlineBtn")) $("triOnlineBtn").onclick = () => triOnlineOpen();   // 3-player online
+// --- Cross (plus-shaped) 3/4-player chess ---
+function cxRestart(n) { if (CX.online) return; CX.n = n; if (CX.ai) cxStartVsAI(n); else cxOpen(n); }
+if ($("cxAiBtn3")) $("cxAiBtn3").onclick = () => cxStartVsAI(3);
+if ($("cxAiBtn4")) $("cxAiBtn4").onclick = () => cxStartVsAI(4);
+if ($("cxHotBtn")) $("cxHotBtn").onclick = () => cxOpen(4);
+if ($("cxOnlineBtn3")) $("cxOnlineBtn3").onclick = () => cxOnlineOpen(3);
+if ($("cxOnlineBtn4")) $("cxOnlineBtn4").onclick = () => cxOnlineOpen(4);
+if ($("cxNew3Btn")) $("cxNew3Btn").onclick = () => cxRestart(3);
+if ($("cxNew4Btn")) $("cxNew4Btn").onclick = () => cxRestart(4);
+if ($("cxCloseBtn")) $("cxCloseBtn").onclick = () => cxClose();
 if ($("triNewBtn")) $("triNewBtn").onclick = () => triNew();
 if ($("triCloseBtn")) $("triCloseBtn").onclick = () => triClose();
 if ($("opSaveBtn")) $("opSaveBtn").onclick = () => repSaveCurrentOpening();   // FEAT4
