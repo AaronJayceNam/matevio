@@ -2400,7 +2400,8 @@ function closeCorrGame() { const m = document.getElementById("corrGameModal"); i
 // lobby will reuse.
 // =========================================================================== //
 const TRI = { board: null, turn: 0, moves: [], over: false, winner: null, sel: null, last: null, busy: false,
-  online: false, myseat: null, names: null, ws: null };
+  online: false, myseat: null, names: null, ws: null, ai: null };
+const TRI_VAL = { P: 1, N: 3, B: 3, R: 5, Q: 9, K: 100 };
 const TRI_GLYPH = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
 const TRI_PIECE_FILL = ["#f4f5f7", "#8f9bb3", "#20242c"];     // white / grey / black armies
 const TRI_PIECE_STROKE = ["#2a2f38", "#20242c", "#c9d2df"];
@@ -2432,12 +2433,53 @@ async function triNew() {
 }
 function triOpen() {
   const m = document.getElementById("triGame"); if (m) m.classList.remove("hidden");
+  TRI.online = false; TRI.ai = null; TRI.names = null;
   if (!TRI.board) triNew(); else triRender();
+}
+// ---- vs 2 AIs: seat 0 is the human, seats 1 & 2 are bots ----
+async function triStartVsAI() {
+  const m = document.getElementById("triGame"); if (m) m.classList.remove("hidden");
+  const T = (typeof t === "function") ? t : ((k) => k);
+  TRI.online = false; TRI.ai = [false, true, true];
+  TRI.names = [T("tri_me"), "🤖 " + T("tri_c1"), "🤖 " + T("tri_c2")];
+  await triNew();               // fresh hotseat game via the server engine
+  if (typeof metric === "function") metric("trident_vs_ai");
+  triMaybeAI();                 // if seat 0 weren't human this would kick off; here it's a no-op
+}
+// pick a move for the side to move: greedy capture (highest-value victim), else random.
+// Only uses TRI.moves (server-provided legal moves) + TRI.board — no chess engine on the client.
+function triPickAI() {
+  const ms = TRI.moves; if (!ms || !ms.length) return null;
+  let best = [], bestScore = -1;
+  for (const mv of ms) {
+    const victim = TRI.board[mv[1]];
+    let score = victim ? (TRI_VAL[victim[1]] || 1) * 10 : 0;
+    const mover = TRI.board[mv[0]];
+    if (mover && mover[1] === "P") score += 1;      // nudge pawns forward for development
+    score += Math.floor(triRand() * 3);             // small jitter so games differ
+    if (score > bestScore) { bestScore = score; best = [mv]; }
+    else if (score === bestScore) best.push(mv);
+  }
+  return best[Math.floor(triRand() * best.length)];
+}
+function triRand() { return (typeof Math !== "undefined" && Math.random) ? Math.random() : 0.5; }
+// after any move settles, if it's now an AI seat's turn, play it (chains through 2 bots)
+function triMaybeAI() {
+  if (!TRI.ai || TRI.over || TRI.online) return;
+  if (!TRI.ai[TRI.turn]) return;                    // human's turn — wait for a click
+  TRI.busy = true; triRender();                     // lock the board while a bot "thinks"
+  setTimeout(() => {
+    if (!TRI.ai || TRI.over) { TRI.busy = false; return; }
+    const mv = triPickAI();
+    TRI.busy = false;
+    if (!mv) return;
+    triMove(mv[0], mv[1]);                           // hotseat path → applies + re-triggers triMaybeAI
+  }, 650);
 }
 function triClose() {
   const m = document.getElementById("triGame"); if (m) m.classList.add("hidden");
   if (TRI.ws) { try { TRI.ws.close(); } catch (e) {} TRI.ws = null; }
-  TRI.online = false; TRI.myseat = null;
+  TRI.online = false; TRI.myseat = null; TRI.ai = null;
 }
 // ---- online 3-player: connect to the /ws3 lobby, then relay through the server ----
 function triOnlineOpen() {
@@ -2480,6 +2522,7 @@ function triLegalTargets() {
 }
 function triClick(i) {
   if (TRI.busy || TRI.over) return;
+  if (TRI.ai && TRI.ai[TRI.turn]) return;   // it's a bot's turn — hands off
   // online: you may only touch your own army, and only when it's your turn
   const mover = TRI.online ? TRI.myseat : TRI.turn;
   if (TRI.online && (TRI.myseat == null || TRI.turn !== TRI.myseat)) return;
@@ -2504,6 +2547,7 @@ async function triMove(frm, to) {
   if (!r || !r.ok) { triRender(); return; }
   Object.assign(TRI, { board: r.board, turn: r.turn, moves: r.moves, over: r.over, winner: r.winner, last: r.last || null });
   triRender();
+  triMaybeAI();   // if it's now a bot's turn, let it play (chains through both bots)
 }
 function triRender() {
   const svg = document.getElementById("triBoard"); if (!svg || !TRI.board) return;
@@ -2547,7 +2591,7 @@ function triRender() {
   svg.querySelectorAll("[data-tri]").forEach((el) => { el.onclick = () => triClick(+el.dataset.tri); });
   const info = document.getElementById("triInfo");
   if (info) {
-    const who = (sec) => (TRI.online && TRI.names && TRI.names[sec]) ? escapeHtml(TRI.names[sec]) : T("tri_c" + sec);
+    const who = (sec) => (TRI.names && TRI.names[sec]) ? escapeHtml(TRI.names[sec]) : T("tri_c" + sec);
     let msg;
     if (TRI.over) {
       msg = (TRI.winner == null) ? ("🏳️ " + T("tri_draw"))
@@ -3456,6 +3500,7 @@ document.querySelectorAll("[data-odds]").forEach((b) => { b.onclick = () => star
 if ($("endgameBtn")) $("endgameBtn").onclick = () => openEndgameModal();   // MODE7
 if ($("egClose")) $("egClose").onclick = () => closeEndgameModal();
 if ($("triBtn")) $("triBtn").onclick = () => triOpen();                     // 3-player hotseat
+if ($("triAiBtn")) $("triAiBtn").onclick = () => triStartVsAI();            // 3-player vs 2 bots
 if ($("triOnlineBtn")) $("triOnlineBtn").onclick = () => triOnlineOpen();   // 3-player online
 if ($("triNewBtn")) $("triNewBtn").onclick = () => triNew();
 if ($("triCloseBtn")) $("triCloseBtn").onclick = () => triClose();
