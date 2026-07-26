@@ -483,10 +483,17 @@ class Lobby:
         if notify_opp is not None:
             await _send(notify_opp, {"type": "opp_disconnected", "seconds": int(RECONNECT_GRACE)})
 
-    async def resume(self, ws: WebSocket, gid: str, token: str) -> None:
+    async def resume(self, ws: WebSocket, gid: str, token: str, want_color: str | None = None) -> None:
         """Reattach a reconnecting player to their in-progress game. The account
-        (resolved from the token) must own a currently-vacant seat in the game —
-        this both authenticates the resume and prevents seat hijacking."""
+        (resolved from the token) must OWN a seat in the game — this authenticates
+        the resume and prevents hijacking another account's seat.
+
+        Crucially we reclaim the seat by ownership *immediately*, even if the old
+        socket hasn't been detected as gone yet: behind a proxy (Render) a dropped
+        socket can take ~10s to register, and until then the seat looks occupied.
+        Requiring a vacated seat made a returning player fail to reconnect for many
+        seconds. 'Latest connection for this account wins' — we take over the seat
+        and close the stale socket. `want_color` disambiguates same-account games."""
         uid = None
         if self._resolve:
             r = self._resolve(token)
@@ -511,16 +518,35 @@ class Lobby:
         game = None
         color = None
         opp_ws = None
+        stale = None                       # old socket to close after the lock
         async with self.lock:
             g = self.by_gid.get(gid)
             if g is not None and not g.over and uid is not None:
-                for c in (chess.WHITE, chess.BLACK):
-                    if g.uids[c] == uid and g.disc_deadline[c] is not None:
-                        g.ws[c] = ws
-                        g.disc_deadline[c] = None
-                        self.games[ws] = g
-                        game, color, opp_ws = g, c, g.ws[not c]
-                        break
+                cols = [chess.WHITE, chess.BLACK]
+                wc = chess.WHITE if want_color == "w" else chess.BLACK if want_color == "b" else None
+                # requested colour first (disambiguates same-account games), then
+                # any seat this account owns
+                order = []
+                if wc is not None and g.uids[wc] == uid:
+                    order.append(wc)
+                order += [c for c in cols if g.uids[c] == uid and c not in order]
+                for c in order:
+                    old = g.ws[c]
+                    if old is ws:
+                        break              # already attached
+                    if old is not None:
+                        self.games.pop(old, None)
+                        stale = old        # a live-but-superseded socket; close it below
+                    g.ws[c] = ws
+                    g.disc_deadline[c] = None
+                    self.games[ws] = g
+                    game, color, opp_ws = g, c, g.ws[not c]
+                    break
+        if stale is not None:
+            try:
+                await stale.close()
+            except Exception:
+                pass
         if game is None:
             return await _send(ws, {"type": "resume_fail"})
         st = self._state(game)
@@ -529,7 +555,7 @@ class Lobby:
                          "opponent": game.names[not color],
                          "opponentRating": game.ratings[not color],
                          "gid": game.gid, "state": st})
-        if opp_ws is not None:
+        if opp_ws is not None and opp_ws is not ws:
             await _send(opp_ws, {"type": "opp_reconnected"})
 
 
@@ -569,7 +595,8 @@ def register_online(app: FastAPI, legal_state, rating_hooks: dict | None = None)
                 elif t == "join":
                     await lobby.join(ws, str(msg.get("code") or "").strip().upper(), name, rating, uid)
                 elif t == "resume":
-                    await lobby.resume(ws, str(msg.get("gid") or ""), str(msg.get("token") or ""))
+                    await lobby.resume(ws, str(msg.get("gid") or ""), str(msg.get("token") or ""),
+                                       str(msg.get("color") or "") or None)
                 elif t == "cancel":
                     await lobby.cancel(ws)
                 elif t == "move":

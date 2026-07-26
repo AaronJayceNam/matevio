@@ -4006,7 +4006,7 @@ function ogTryReconnect() {
   ws.onopen = () => {
     if (OG.pingTimer) clearInterval(OG.pingTimer);
     OG.pingTimer = setInterval(() => ogSend({ type: "ping" }), 25000);
-    ogSend({ type: "resume", gid: OG.gid, token: ogToken() });
+    ogSend({ type: "resume", gid: OG.gid, token: ogToken(), color: OG.color });
   };
   ws.onmessage = (e) => { try { ogHandle(JSON.parse(e.data)); } catch (err) {} };
   ws.onclose = () => {
@@ -4298,6 +4298,12 @@ function updateOgTurn() {
 
 function ogEnd(result, reason, rInfo) {
   OG.over = true; ogExitGame(); renderOgBoard(); updateOgTurn();
+  // Bug fix: bring the match panel back the moment a game ends. The result card
+  // has a × that skips "새 매치", and without this the quick-match button (inside
+  // ogSetup) stayed hidden — leaving the player with no way to start another game.
+  $("ogSetup").classList.remove("hidden");
+  updateOgAuthGate();
+  $("ogCancel").classList.add("hidden"); $("ogCodeBox").classList.add("hidden");
   let kind = "draw";
   if (result === "1-0") kind = OG.color === "w" ? "win" : "loss";
   else if (result === "0-1") kind = OG.color === "b" ? "win" : "loss";
