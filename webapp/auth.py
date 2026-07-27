@@ -281,6 +281,23 @@ def _init_db() -> None:
             except (ValueError, TypeError, json.JSONDecodeError):
                 seed = RATING_START
             cur.execute(f"UPDATE users SET rating = {_ph()} WHERE id = {_ph()}", (seed, uid))
+        # server-owned puzzle stats — the puzzle/streak leaderboards read THESE, not
+        # the client-owned progress blob (which was trivially forgeable). Updated
+        # monotonically + rate-limited on save; seeded once from the existing blob.
+        for col in ("pz_solved", "pz_streak"):
+            if _IS_PG:
+                cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} INTEGER")
+            else:
+                have = [r[1] for r in cur.execute("PRAGMA table_info(users)").fetchall()]
+                if col not in have:
+                    cur.execute(f"ALTER TABLE users ADD COLUMN {col} INTEGER")
+        cur.execute("SELECT id, progress FROM users WHERE pz_solved IS NULL OR pz_streak IS NULL")
+        for uid, prog in cur.fetchall():
+            try:
+                s, k = _pz_stats(json.loads(prog or "{}"))
+            except (ValueError, TypeError, json.JSONDecodeError):
+                s, k = 0, 0
+            cur.execute(f"UPDATE users SET pz_solved = {_ph()}, pz_streak = {_ph()} WHERE id = {_ph()}", (s, k, uid))
         con.commit()
 
 
@@ -319,11 +336,21 @@ def apply_online_result(uid_w: str, uid_b: str, result: str):
     try:
         with _connect() as con:
             rw, rb = _rating_of(con, uid_w), _rating_of(con, uid_b)
-            nw = max(0, rw + _elo_delta(rw, rb, score_w))
-            nb = max(0, rb + _elo_delta(rb, rw, 1.0 - score_w))
+            dw = _elo_delta(rw, rb, score_w)
+            db = _elo_delta(rb, rw, 1.0 - score_w)
             cur = con.cursor()
-            cur.execute(f"UPDATE users SET rating = {_ph()} WHERE id = {_ph()}", (nw, uid_w))
-            cur.execute(f"UPDATE users SET rating = {_ph()} WHERE id = {_ph()}", (nb, uid_b))
+            # ADDITIVE + floored update (was absolute `SET rating = nw`, which lost an
+            # update when the same account finished two games near-simultaneously).
+            if _IS_PG:
+                cur.execute("UPDATE users SET rating = GREATEST(0, rating + %s) WHERE id = %s RETURNING rating", (dw, uid_w))
+                nw = cur.fetchone()[0]
+                cur.execute("UPDATE users SET rating = GREATEST(0, rating + %s) WHERE id = %s RETURNING rating", (db, uid_b))
+                nb = cur.fetchone()[0]
+            else:
+                cur.execute("UPDATE users SET rating = MAX(0, rating + ?) WHERE id = ?", (dw, uid_w))
+                cur.execute("UPDATE users SET rating = MAX(0, rating + ?) WHERE id = ?", (db, uid_b))
+                con.commit()
+                nw, nb = _rating_of(con, uid_w), _rating_of(con, uid_b)
             con.commit()
     except Exception:
         return None
@@ -342,6 +369,17 @@ def save_online_snapshot(gid: str, data: dict) -> None:
         txt = json.dumps(data or {}, ensure_ascii=False)
         with _connect() as con:
             cur = con.cursor()
+            # Bug fix: snapshot writes are fire-and-forget across threads and can land
+            # out of order. Only overwrite when this snapshot is at least as advanced
+            # (by ply) as the stored one, so a late write can't roll the game back.
+            cur.execute(f"SELECT data FROM online_games WHERE gid = {_ph()}", (gid,))
+            row = cur.fetchone()
+            if row and row[0]:
+                try:
+                    if int((json.loads(row[0]) or {}).get("ply", -1)) > int((data or {}).get("ply", 0)):
+                        return
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    pass
             if _IS_PG:
                 cur.execute(
                     "INSERT INTO online_games (gid, data, updated) VALUES (%s, %s, %s) "
@@ -508,6 +546,54 @@ def _progress_json(progress: dict | None) -> str:
     return txt
 
 
+# monotonic numeric stats that should only ever RISE across devices — merged by max
+_MONO_KEYS = {"xp", "totalXp", "bestLevel", "pzStreakBest", "bestStreak", "pzBest",
+              "stormBest", "ladderBest", "coins", "bossBeaten", "egBest"}
+# a single save can bump the server-owned puzzle count by at most this much — stops
+# a client from POSTing 50000 fake solves to top the leaderboard in one shot.
+_PZ_MAX_STEP = 200
+
+
+def _merge_progress(old: dict, new: dict) -> dict:
+    """Bug fix: /api/auth/save was last-write-wins, so a second logged-in device
+    silently clobbered the first's puzzles/xp/achievements. Merge server-stored
+    progress with the incoming blob (union lists, max monotonic counters, else take
+    incoming) — the same shape applyProgress() uses client-side."""
+    out = dict(old or {})
+    for k, v in (new or {}).items():
+        ov = out.get(k)
+        if isinstance(v, list) and isinstance(ov, list):
+            seen = {}
+            for x in ov + v:
+                try:
+                    seen[json.dumps(x, sort_keys=True, ensure_ascii=False)] = x
+                except (TypeError, ValueError):
+                    seen[repr(x)] = x
+            out[k] = list(seen.values())
+        elif k in _MONO_KEYS and isinstance(v, (int, float)) and isinstance(ov, (int, float)):
+            out[k] = max(ov, v)
+        else:
+            out[k] = v
+    return out
+
+
+def _pz_int(v) -> int:
+    try:
+        return max(0, int(v or 0))
+    except (ValueError, TypeError):
+        return 0
+
+
+def _pz_stats(progress: dict) -> tuple[int, int]:
+    pz = (progress or {}).get("puzzles")
+    solved = len(pz) if isinstance(pz, list) else 0
+    try:
+        streak = max(0, int((progress or {}).get("pzStreakBest") or 0))
+    except (ValueError, TypeError):
+        streak = 0
+    return solved, streak
+
+
 # --------------------------------------------------------------------------- #
 def register_auth(app: FastAPI) -> None:
     _init_db()
@@ -668,23 +754,18 @@ def register_auth(app: FastAPI) -> None:
             return _lb_cache["data"]
         with _connect() as con:
             cur = con.cursor()
-            cur.execute("SELECT id, progress, rating FROM users")
+            cur.execute("SELECT id, rating, pz_solved, pz_streak FROM users")
             rows = cur.fetchall()
+        def _int(v):
+            try: return max(0, int(v or 0))
+            except (ValueError, TypeError): return 0
         entries = []
-        for uid, prog, rt in rows:
-            try:
-                p = json.loads(prog or "{}")
-            except (ValueError, TypeError, json.JSONDecodeError):
-                p = {}
-            def _int(v):
-                try: return max(0, int(v or 0))
-                except (ValueError, TypeError): return 0
-            pz = p.get("puzzles")
+        for uid, rt, ps, pk in rows:
             entries.append({
                 "id": uid,
                 "rating": _int(rt if rt is not None else RATING_START),   # authoritative column
-                "puzzles": len(pz) if isinstance(pz, list) else 0,
-                "pzStreakBest": _int(p.get("pzStreakBest")),
+                "puzzles": _int(ps),        # server-owned, forgery-resistant column
+                "pzStreakBest": _int(pk),
             })
         by_rating = sorted(entries, key=lambda e: -e["rating"])[:20]
         by_puzzles = sorted([e for e in entries if e["puzzles"] > 0],
@@ -829,12 +910,29 @@ def register_auth(app: FastAPI) -> None:
 
     @app.post("/api/auth/save")
     def auth_save(req: SaveRequest):
-        progress = _progress_json(req.progress)
+        incoming = req.progress if isinstance(req.progress, dict) else {}
         with _connect() as con:
+            cur = con.cursor()
             uid = _user_for_token(con, req.token)
             if uid is None:
                 raise HTTPException(401, "세션이 만료되었습니다. 다시 로그인하세요.")
-            con.cursor().execute(
-                f"UPDATE users SET progress = {_ph()} WHERE id = {_ph()}", (progress, uid))
+            cur.execute(f"SELECT progress, pz_solved, pz_streak FROM users WHERE id = {_ph()}", (uid,))
+            row = cur.fetchone()
+            try:
+                old = json.loads((row[0] if row else None) or "{}")
+            except (ValueError, TypeError, json.JSONDecodeError):
+                old = {}
+            cur_solved = _pz_int(row[1]) if row else 0
+            cur_streak = _pz_int(row[2]) if row else 0
+            # bug 12: merge (union/max) instead of clobbering the other device's save
+            merged = _merge_progress(old, incoming)
+            progress = _progress_json(merged)   # keeps the 200KB cap
+            # bug 2: server-owned puzzle stats rise monotonically, capped per save
+            in_solved, in_streak = _pz_stats(incoming)
+            new_solved = max(cur_solved, min(in_solved, cur_solved + _PZ_MAX_STEP))
+            new_streak = max(cur_streak, min(in_streak, cur_streak + _PZ_MAX_STEP))
+            cur.execute(
+                f"UPDATE users SET progress = {_ph()}, pz_solved = {_ph()}, pz_streak = {_ph()} WHERE id = {_ph()}",
+                (progress, new_solved, new_streak, uid))
             con.commit()
         return {"ok": True}

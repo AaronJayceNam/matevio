@@ -199,9 +199,18 @@ def register_corr(app: FastAPI) -> None:
             new_status, result = "active", None
             if board.is_game_over(claim_draw=True):
                 new_status, result = "done", board.result(claim_draw=True)
-            cur.execute(f"UPDATE corr_games SET moves={_ph()}, turn={_ph()}, status={_ph()}, result={_ph()}, updated={_ph()} WHERE gid={_ph()}",
-                        (new_moves, new_turn, new_status, result, _now(), req.gid))
+            # bug fix: guard the write on the exact state we validated against, so two
+            # concurrent moves (double-tap / two tabs) can't both commit — the second
+            # matches zero rows and is reported as a conflict instead of silently
+            # overwriting the first.
+            cur.execute(
+                f"UPDATE corr_games SET moves={_ph()}, turn={_ph()}, status={_ph()}, result={_ph()}, updated={_ph()} "
+                f"WHERE gid={_ph()} AND moves={_ph()} AND turn={_ph()} AND status='active'",
+                (new_moves, new_turn, new_status, result, _now(), req.gid, mv, turn))
+            changed = cur.rowcount
             con.commit()
+        if not changed:
+            return {"ok": False, "error": "conflict"}
         return {"ok": True, "status": new_status, "result": result}
 
     @app.post("/api/corr/resign")
@@ -245,6 +254,36 @@ def register_corr(app: FastAPI) -> None:
             cur.execute(f"SELECT COUNT(*) FROM swiss WHERE week={_ph()}", (req.week[:10],))
             n = cur.fetchone()[0]
         return {"ok": True, "entrants": n}
+
+    @app.post("/api/swiss/pair")
+    def swiss_pair(req: SwissReq):
+        """Pair not-yet-paired entrants of a week into correspondence games. Idempotent:
+        it only creates games for entrants who don't already have a swiss game that
+        week, so it's safe to call repeatedly (on demand, or from a weekly cron)."""
+        week = req.week[:10]
+        created = 0
+        with _connect() as con:
+            cur = con.cursor()
+            ev = "swiss:" + week
+            cur.execute(f"SELECT uid,name FROM swiss WHERE week={_ph()} ORDER BY joined ASC", (week,))
+            entrants = cur.fetchall()
+            # who already has a swiss game this week (either colour)?
+            cur.execute(f"SELECT w_uid,b_uid FROM corr_games WHERE event={_ph()}", (ev,))
+            paired = set()
+            for wu, bu in cur.fetchall():
+                paired.add(wu); paired.add(bu)
+            pool = [(u, n) for (u, n) in entrants if u not in paired]
+            for i in range(0, len(pool) - 1, 2):
+                (wu, wn), (bu, bn) = pool[i], pool[i + 1]
+                gid = secrets.token_hex(6)
+                cur.execute(
+                    f"INSERT INTO corr_games (gid,w_uid,b_uid,w_name,b_name,moves,turn,status,event,created,updated) "
+                    f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},'',{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
+                    (gid, wu, bu, wn or wu, bn or bu, "w", "active", ev, _now(), _now()))
+                created += 1
+            byes = len(pool) % 2
+            con.commit()
+        return {"ok": True, "created": created, "byes": byes}
 
     @app.post("/api/swiss/status")
     def swiss_status(req: SwissReq):
