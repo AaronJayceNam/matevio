@@ -400,6 +400,12 @@ class Lobby:
             await self._finish(game, end_result, end_reason)
 
     async def rematch(self, ws: WebSocket) -> None:
+        try:
+            await self._rematch_impl(ws)
+        except Exception as e:   # TEMP: surface the real error instead of dying silently
+            await _send(ws, {"type": "rematch_debug", "err": repr(e)})
+
+    async def _rematch_impl(self, ws: WebSocket) -> None:
         """F8: offer/accept a rematch against the same opponent. When both players
         of the just-finished game have asked, start a fresh game between them."""
         go = None
