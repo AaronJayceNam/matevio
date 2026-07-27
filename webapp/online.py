@@ -711,3 +711,5 @@ def register_online(app: FastAPI, legal_state, rating_hooks: dict | None = None)
             await lobby.disconnect(ws)
 
     return lobby
+
+# redeploy marker: force rebuild of the online module layer
