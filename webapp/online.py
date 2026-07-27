@@ -401,26 +401,31 @@ class Lobby:
 
     async def rematch(self, ws: WebSocket) -> None:
         """F8: offer/accept a rematch against the same opponent. When both players
-        of the just-finished game have asked, start a fresh game between them."""
-        go = None
-        notify = None
-        async with self.lock:
-            rec = self.rematch.get(ws)
-            if not rec:
-                return await _send(ws, {"type": "error", "message": "재대국을 시작할 수 없습니다."})
-            partner = rec.get("partner")
-            prec = self.rematch.get(partner)
-            rec["want"] = True
-            if partner is not None and prec is not None and prec.get("want"):
-                go = (rec["self_t"], prec["self_t"])
-                self.rematch.pop(ws, None)
-                self.rematch.pop(partner, None)
-            else:
-                notify = partner
-        if go:
-            await self._start_game(go[0], go[1])
-        elif notify is not None:
-            await _send(notify, {"type": "rematch_offer"})
+        of the just-finished game have asked, start a fresh game between them.
+        Wrapped defensively so a rematch never crashes the socket handler (which
+        would make the player appear disconnected)."""
+        try:
+            go = None
+            notify = None
+            async with self.lock:
+                rec = self.rematch.get(ws)
+                if not rec:
+                    return await _send(ws, {"type": "error", "message": "재대국을 시작할 수 없습니다."})
+                partner = rec.get("partner")
+                prec = self.rematch.get(partner)
+                rec["want"] = True
+                if partner is not None and prec is not None and prec.get("want"):
+                    go = (rec["self_t"], prec["self_t"])
+                    self.rematch.pop(ws, None)
+                    self.rematch.pop(partner, None)
+                else:
+                    notify = partner
+            if go:
+                await self._start_game(go[0], go[1])
+            elif notify is not None:
+                await _send(notify, {"type": "rematch_offer"})
+        except Exception:
+            await _send(ws, {"type": "error", "message": "재대국을 시작할 수 없습니다."})
 
     async def resign(self, ws: WebSocket) -> None:
         async with self.lock:

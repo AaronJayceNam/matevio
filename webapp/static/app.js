@@ -3974,14 +3974,9 @@ function ogHandle(msg) {
     case "opp_reconnected":
       setStatus("ogStatus", t("og_opp_reconnected"));
       break;
-    case "rematch_offer":   // F8: opponent wants to play again — tap 재대국 to accept
-      hideResult();
-      setStatus("ogStatus", t("og_rematch_offer"), true);
-      presentResult({ kind: "draw", icon: "🔄", title: t("og_rematch_offer_t"),
-        sub: t("og_rematch_offer"), actions: [
-          { label: t("og_rematch"), primary: true, onClick: () => ogSend({ type: "rematch" }) },
-          { label: t("og_new_match"), onClick: ogReset }] });
-      break;
+    // NOTE: F8 rematch UI is held back — the server route is implemented + hardened,
+    // but a production-only issue kept the offer from being delivered reliably in
+    // testing, so the entry point is disabled to avoid a broken button.
     case "resume_ok":
       OG.reconnecting = false; OG.reconnectDeadline = null;
       OG.started = true; OG.over = false;
@@ -4134,7 +4129,6 @@ function ogEnd(result, reason, rInfo) {
     actions.push({ label: t("ai_review_btn"), primary: true,
       onClick: () => runAnalyze(reviewReq, "ogStatus") });
   }
-  actions.push({ label: t("og_rematch"), onClick: () => { ogSend({ type: "rematch" }); setStatus("ogStatus", t("og_rematch_sent")); } });
   actions.push({ label: t("og_new_match"), onClick: ogReset });
   const _nextOg = (typeof nextTodoAction === "function") ? nextTodoAction(["📊"]) : null;   // ADD9
   if (_nextOg) actions.push(_nextOg);
