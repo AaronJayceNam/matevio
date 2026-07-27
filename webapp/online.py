@@ -417,6 +417,11 @@ class Lobby:
                 self.rematch.pop(partner, None)
             else:
                 notify = partner
+            dbg = {"type": "rematch_debug", "hasRec": rec is not None,
+                   "partnerNone": partner is None, "precNone": prec is None,
+                   "go": bool(go), "notify": notify is not None,
+                   "keys": len(self.rematch)}
+        await _send(ws, dbg)
         if go:
             await self._start_game(go[0], go[1])
         elif notify is not None:
