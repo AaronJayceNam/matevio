@@ -264,6 +264,7 @@ function enableBoardDrag(boardEl, cfg) {
 
   boardEl.addEventListener("pointerdown", (e) => {
     if (!cfg.movable()) return;
+    if (d && d.pid !== undefined && d.pid !== e.pointerId) return;   // a drag is already in flight — ignore extra fingers
     const pc = e.target.closest(".pc");
     const sqEl = pc && pc.closest(".sq");
     const from = sqEl && sqEl.dataset.sq;
@@ -272,12 +273,12 @@ function enableBoardDrag(boardEl, cfg) {
     // with no legal moves just lifts and snaps back.
     // no preventDefault: touch-action:pan-y (CSS) lets a vertical swipe scroll the
     // page, while letting the native click through keeps tap-to-move working on touch.
-    d = { from, pc, sx: e.clientX, sy: e.clientY, moved: false, clone: null, legal: cfg.legal() || {}, cell: boardEl.getBoundingClientRect().width / 8 };
+    d = { from, pc, pid: e.pointerId, sx: e.clientX, sy: e.clientY, moved: false, clone: null, legal: cfg.legal() || {}, cell: boardEl.getBoundingClientRect().width / 8 };
     try { boardEl.setPointerCapture(e.pointerId); } catch (err) {}
   });
 
   boardEl.addEventListener("pointermove", (e) => {
-    if (!d) return;
+    if (!d || e.pointerId !== d.pid) return;
     if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 6) return;
     if (!d.moved) {
       d.moved = true;
@@ -316,9 +317,9 @@ function enableBoardDrag(boardEl, cfg) {
       cfg.commit(cur.from, to);
     }
   };
-  boardEl.addEventListener("pointerup", finish);
+  boardEl.addEventListener("pointerup", (e) => { if (d && e.pointerId !== d.pid) return; finish(e); });
   // pointercancel = the browser took the gesture for scrolling → abort, never move
-  boardEl.addEventListener("pointercancel", () => { cleanup(); });
+  boardEl.addEventListener("pointercancel", (e) => { if (d && e.pointerId !== d.pid) return; cleanup(); });
 }
 
 // Keep the active move visible by scrolling ONLY the list container — never the
@@ -1479,7 +1480,7 @@ $("rvExport").onclick = () => {
 };
 
 // ---- share: standalone HTML study with AI explanations + arrows ----
-$("rvShare").onclick = async () => {
+if ($("rvShareReview")) $("rvShareReview").onclick = async () => {
   const { v, white, black } = reviewMeta();
   setStatus("rvShareStatus", t("rv_share_gen"));
   try {
@@ -1719,18 +1720,20 @@ function renderMoveStrip(elId, san) {
 }
 
 async function aiHumanMove(uci) {
+  if (AIG.thinking) return;                 // bug fix: block a second move racing in
+  AIG.thinking = true;                      // lock SYNCHRONOUSLY, before any await
   // Instant feedback: move the piece right away, don't wait for the server.
   AIG.sel = null; AIG.hint = null; AIG.viewState = null; AIG.viewIdx = null; AIG.viewLast = null;
   optimisticMove($("aiBoard"), uci.slice(0, 2), uci.slice(2, 4), AIG.orient);
   const moves = [...AIG.moves, uci];
   let st;
   try { st = await api("/api/legal", { moves, startFen: AIG.startFen }); }
-  catch (e) { renderAiBoard(); setStatus("aiStatus", isOffline(e) ? t("offline_msg") : t("ai_move_err") + e.message, true); return; }
+  catch (e) { AIG.thinking = false; renderAiBoard(); setStatus("aiStatus", isOffline(e) ? t("offline_msg") : t("ai_move_err") + e.message, true); return; }
   AIG.moves = moves; AIG.state = st;
   renderAiBoard(); renderAiMoves(); updateAiTurn();   // authoritative — fixes any special move / check
   playMoveSfx(st);
-  if (st.gameOver) { aiEndGame(); return; }
-  await aiReply();   // no artificial delay
+  if (st.gameOver) { AIG.thinking = false; aiEndGame(); return; }
+  await aiReply();   // no artificial delay (keeps AIG.thinking true until it resolves)
 }
 
 // ---- client-side AI move (Stockfish in the browser; server is the fallback) ----
@@ -2393,225 +2396,16 @@ async function openCorrGame(gid) {
 }
 function closeCorrGame() { const m = document.getElementById("corrGameModal"); if (m) m.classList.add("hidden"); CORR.gid = null; }
 
-// =========================================================================== //
-// 3-PLAYER: TRIDENT CHESS (핫시트) — renders the 96-cell hex board (3 sectors of
-// 8x4 as an isometric rhombille around a central hub) and drives a pass-and-play
-// game via the server engine (/api/trident/*). Also the board UI the online 3P
-// lobby will reuse.
-// =========================================================================== //
-const TRI = { board: null, turn: 0, moves: [], over: false, winner: null, sel: null, last: null, busy: false,
-  online: false, myseat: null, names: null, ws: null, ai: null };
-const TRI_VAL = { P: 1, N: 3, B: 3, R: 5, Q: 9, K: 100 };
-const TRI_GLYPH = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
-const TRI_PIECE_FILL = ["#f4f5f7", "#8f9bb3", "#20242c"];     // white / grey / black armies
-const TRI_PIECE_STROKE = ["#2a2f38", "#20242c", "#c9d2df"];
-function triCellSRF(i) { const s = Math.floor(i / 32), rem = i % 32; return [s, Math.floor(rem / 8) + 1, rem % 8]; }
-function triGeom() {
-  const U = 30, cx = 220, cy = 232;
-  const ang = (k) => (Math.PI / 2) + k * (2 * Math.PI / 3);   // 90 / 210 / 330 deg
-  const e = (k) => [Math.cos(ang(k)), -Math.sin(ang(k))];      // SVG y-down flip
-  return { U, cx, cy, e };
-}
-function triCorner(s, fa, rb, G) {
-  const ef = G.e(s), er = G.e((s + 1) % 3);
-  return [G.cx + fa * G.U * ef[0] + rb * G.U * er[0], G.cy + fa * G.U * ef[1] + rb * G.U * er[1]];
-}
-function triCellPoly(i, G) {
-  const [s, r, f] = triCellSRF(i); const rb = 4 - r;
-  return [triCorner(s, f, rb, G), triCorner(s, f + 1, rb, G), triCorner(s, f + 1, rb + 1, G), triCorner(s, f, rb + 1, G)];
-}
-function triCellCenter(i, G) { const p = triCellPoly(i, G); return [(p[0][0] + p[2][0]) / 2, (p[0][1] + p[2][1]) / 2]; }
-
-async function triNew() {
-  if (TRI.online) return;   // online games are server-driven; "new" doesn't apply
-  TRI.sel = null; TRI.last = null; TRI.busy = true;
-  try { const r = await api("/api/trident/new"); Object.assign(TRI, { board: r.board, turn: r.turn, moves: r.moves, over: r.over, winner: r.winner }); }
-  catch (e) { TRI.busy = false; return; }
-  TRI.busy = false;
-  if (typeof metric === "function") metric("trident_hotseat");
-  triRender();
-}
-function triOpen() {
-  const m = document.getElementById("triGame"); if (m) m.classList.remove("hidden");
-  TRI.online = false; TRI.ai = null; TRI.names = null;
-  if (!TRI.board) triNew(); else triRender();
-}
-// ---- vs 2 AIs: seat 0 is the human, seats 1 & 2 are bots ----
-async function triStartVsAI() {
-  const m = document.getElementById("triGame"); if (m) m.classList.remove("hidden");
-  const T = (typeof t === "function") ? t : ((k) => k);
-  TRI.online = false; TRI.ai = [false, true, true];
-  TRI.names = [T("tri_me"), "🤖 " + T("tri_c1"), "🤖 " + T("tri_c2")];
-  await triNew();               // fresh hotseat game via the server engine
-  if (typeof metric === "function") metric("trident_vs_ai");
-  triMaybeAI();                 // if seat 0 weren't human this would kick off; here it's a no-op
-}
-// pick a move for the side to move: greedy capture (highest-value victim), else random.
-// Only uses TRI.moves (server-provided legal moves) + TRI.board — no chess engine on the client.
-function triPickAI() {
-  const ms = TRI.moves; if (!ms || !ms.length) return null;
-  let best = [], bestScore = -1;
-  for (const mv of ms) {
-    const victim = TRI.board[mv[1]];
-    let score = victim ? (TRI_VAL[victim[1]] || 1) * 10 : 0;
-    const mover = TRI.board[mv[0]];
-    if (mover && mover[1] === "P") score += 1;      // nudge pawns forward for development
-    score += Math.floor(triRand() * 3);             // small jitter so games differ
-    if (score > bestScore) { bestScore = score; best = [mv]; }
-    else if (score === bestScore) best.push(mv);
-  }
-  return best[Math.floor(triRand() * best.length)];
-}
-function triRand() { return (typeof Math !== "undefined" && Math.random) ? Math.random() : 0.5; }
-// after any move settles, if it's now an AI seat's turn, play it (chains through 2 bots)
-function triMaybeAI() {
-  if (!TRI.ai || TRI.over || TRI.online) return;
-  if (!TRI.ai[TRI.turn]) return;                    // human's turn — wait for a click
-  TRI.busy = true; triRender();                     // lock the board while a bot "thinks"
-  setTimeout(() => {
-    if (!TRI.ai || TRI.over) { TRI.busy = false; return; }
-    const mv = triPickAI();
-    TRI.busy = false;
-    if (!mv) return;
-    triMove(mv[0], mv[1]);                           // hotseat path → applies + re-triggers triMaybeAI
-  }, 650);
-}
-function triClose() {
-  const m = document.getElementById("triGame"); if (m) m.classList.add("hidden");
-  if (TRI.ws) { try { TRI.ws.close(); } catch (e) {} TRI.ws = null; }
-  TRI.online = false; TRI.myseat = null; TRI.ai = null;
-}
-// ---- online 3-player: connect to the /ws3 lobby, then relay through the server ----
-function triOnlineOpen() {
-  const m = document.getElementById("triGame"); if (m) m.classList.remove("hidden");
-  Object.assign(TRI, { online: true, myseat: null, board: null, over: false, winner: null, sel: null, last: null, busy: false, names: null });
-  triSetStatus((typeof t === "function" ? t("tri_connecting") : "연결 중…"));
-  let ws; try { ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws3"); }
-  catch (e) { triSetStatus((typeof t === "function" ? t("tri_conn_fail") : "연결 실패")); return; }
-  TRI.ws = ws;
-  ws.onopen = () => { try { ws.send(JSON.stringify({ type: "quick", name: (AUTH && AUTH.id) || "플레이어" })); } catch (e) {} };
-  ws.onmessage = (ev) => { let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; } triOnMsg(msg); };
-  ws.onclose = () => { if (TRI.online && !TRI.over && TRI.myseat == null) triSetStatus((typeof t === "function" ? t("tri_conn_fail") : "연결 끊김")); };
-  if (typeof metric === "function") metric("trident_online");
-}
-function triSetStatus(html) { const info = document.getElementById("triInfo"); if (info) info.innerHTML = html; }
-function triApplyState(st, last) {
-  Object.assign(TRI, { board: st.board, turn: st.turn, moves: st.moves || [], over: !!st.over, winner: st.winner, last: last || null, sel: null, busy: false });
-  triRender();
-}
-function triOnMsg(msg) {
-  const T = (typeof t === "function") ? t : ((k) => k);
-  if (msg.type === "waiting") {
-    triSetStatus("⏳ " + T("tri_waiting").replace("{have}", msg.have || 1).replace("{need}", msg.need || 3));
-  } else if (msg.type === "start") {
-    TRI.myseat = msg.seat; TRI.names = msg.names || null;
-    triApplyState(msg.state);
-  } else if (msg.type === "state") {
-    triApplyState(msg.state, msg.last);
-  } else if (msg.type === "end") {
-    triApplyState(msg.state); TRI.over = true; TRI.winner = msg.winner; triRender();
-  } else if (msg.type === "aborted") {
-    TRI.over = true; triSetStatus("⚠️ " + T("tri_aborted"));
-  } else if (msg.type === "error") {
-    TRI.busy = false; triRender();   // rejected move — unlock and let the player retry
-  }
-}
-function triLegalTargets() {
-  if (TRI.sel == null) return [];
-  return TRI.moves.filter((m) => m[0] === TRI.sel).map((m) => m[1]);
-}
-function triClick(i) {
-  if (TRI.busy || TRI.over) return;
-  if (TRI.ai && TRI.ai[TRI.turn]) return;   // it's a bot's turn — hands off
-  // online: you may only touch your own army, and only when it's your turn
-  const mover = TRI.online ? TRI.myseat : TRI.turn;
-  if (TRI.online && (TRI.myseat == null || TRI.turn !== TRI.myseat)) return;
-  const occ = TRI.board[i];
-  if (TRI.sel != null) {
-    if (triLegalTargets().includes(i)) return triMove(TRI.sel, i);
-    if (occ && occ[0] === mover) { TRI.sel = i; return triRender(); }
-    TRI.sel = null; return triRender();
-  }
-  if (occ && occ[0] === mover) { TRI.sel = i; triRender(); }
-}
-async function triMove(frm, to) {
-  if (TRI.online) {
-    // optimistic: lock input, let the server broadcast the authoritative state back
-    TRI.sel = null; TRI.busy = true;
-    try { TRI.ws.send(JSON.stringify({ type: "move", frm, to })); } catch (e) {}
-    return;
-  }
-  TRI.busy = true; TRI.sel = null;
-  let r; try { r = await api("/api/trident/move", { board: TRI.board, turn: TRI.turn, frm, to }); } catch (e) { TRI.busy = false; return; }
-  TRI.busy = false;
-  if (!r || !r.ok) { triRender(); return; }
-  Object.assign(TRI, { board: r.board, turn: r.turn, moves: r.moves, over: r.over, winner: r.winner, last: r.last || null });
-  triRender();
-  triMaybeAI();   // if it's now a bot's turn, let it play (chains through both bots)
-}
-function triRender() {
-  const svg = document.getElementById("triBoard"); if (!svg || !TRI.board) return;
-  const G = triGeom();
-  const targets = triLegalTargets();
-  const T = (typeof t === "function") ? t : ((k) => k);
-  let s = "";
-  for (let i = 0; i < 96; i++) {
-    const [sec, r, f] = triCellSRF(i);
-    const poly = triCellPoly(i, G).map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
-    const light = (f + r) % 2 === 0;
-    let fill = light ? "#e9edcf" : "#7f9b5b";
-    if (TRI.last && (i === TRI.last[0] || i === TRI.last[1])) fill = light ? "#f4e58c" : "#c7bb52";
-    if (i === TRI.sel) fill = "#ffcf5a";
-    s += '<polygon points="' + poly + '" fill="' + fill + '" stroke="#00000022" stroke-width="0.6" data-tri="' + i + '"/>';
-  }
-  // home-rank ownership tint (r==1) — a colored edge per army
-  const tint = ["#e8534d", "#c9c9c9", "#2b3550"];
-  for (let sec = 0; sec < 3; sec++) {
-    for (let f = 0; f < 8; f++) {
-      const i = sec * 32 + f;   // r=1
-      const poly = triCellPoly(i, G).map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
-      s += '<polygon points="' + poly + '" fill="none" stroke="' + tint[sec] + '" stroke-width="1.6" pointer-events="none"/>';
-    }
-  }
-  // legal-move dots
-  for (const tg of targets) {
-    const c = triCellCenter(tg, G);
-    const cap = TRI.board[tg] ? 8.5 : 4.5;
-    s += '<circle cx="' + c[0].toFixed(1) + '" cy="' + c[1].toFixed(1) + '" r="' + cap + '" fill="' + (TRI.board[tg] ? "#00000033" : "#00000030") + '" pointer-events="none"/>';
-  }
-  // pieces
-  for (let i = 0; i < 96; i++) {
-    const occ = TRI.board[i]; if (!occ) continue;
-    const c = triCellCenter(i, G);
-    s += '<text x="' + c[0].toFixed(1) + '" y="' + (c[1] + 8).toFixed(1) + '" text-anchor="middle" font-size="24" ' +
-      'fill="' + TRI_PIECE_FILL[occ[0]] + '" stroke="' + TRI_PIECE_STROKE[occ[0]] + '" stroke-width="0.9" pointer-events="none">' +
-      TRI_GLYPH[occ[1].toLowerCase()] + "</text>";
-  }
-  svg.innerHTML = s;
-  svg.querySelectorAll("[data-tri]").forEach((el) => { el.onclick = () => triClick(+el.dataset.tri); });
-  const info = document.getElementById("triInfo");
-  if (info) {
-    const who = (sec) => (TRI.names && TRI.names[sec]) ? escapeHtml(TRI.names[sec]) : T("tri_c" + sec);
-    let msg;
-    if (TRI.over) {
-      msg = (TRI.winner == null) ? ("🏳️ " + T("tri_draw"))
-        : ("🏆 " + T("tri_win").replace("{who}", who(TRI.winner)));
-    } else {
-      msg = '<span class="tri-turn tri-c' + TRI.turn + '">●</span> ' + T("tri_turn").replace("{who}", who(TRI.turn));
-      if (TRI.online && TRI.myseat != null) {
-        msg += ' · <span class="tri-c' + TRI.myseat + '">' +
-          T((TRI.turn === TRI.myseat) ? "tri_your_move" : "tri_seat_wait").replace("{who}", who(TRI.myseat)) + "</span>";
-      }
-    }
-    info.innerHTML = msg;
-  }
-}
+// ---- shared board constants (used by the CROSS 3/4-player modes) ----
+const PIECE_GLYPH = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
+const PIECE_VALUES = { P: 1, N: 3, B: 3, R: 5, Q: 9, K: 100 };
+function rand() { return (typeof Math !== "undefined" && Math.random) ? Math.random() : 0.5; }
 
 // =========================================================================== #
 // CROSS — plus-shaped 3/4-player chess (upright squares; the readable board)
 // =========================================================================== #
 const CX = { board: null, turn: 0, active: [], n: 4, moves: [], over: false, winner: null,
-  sel: null, last: null, busy: false, online: false, myseat: null, names: null, ws: null, ai: null };
+  sel: null, last: null, busy: false, online: false, myseat: null, names: null, ws: null, ai: null, aiTimer: null };
 const CX_N = 14, CX_U = 34;                       // 14x14 grid, 34px cells
 const CX_FILL = ["#f4f5f7", "#e0544c", "#20242c", "#3f7fd0"];   // seat 0..3 armies
 const CX_STROKE = ["#2a2f38", "#ffd9d5", "#c9d2df", "#dcebff"];
@@ -2630,6 +2424,7 @@ function cxHomeSeat(x, y) {
 function cxActiveHas(s) { return CX.active.indexOf(s) >= 0; }
 
 async function cxNew(n) {
+  if (CX.aiTimer) { clearTimeout(CX.aiTimer); CX.aiTimer = null; }   // cancel a pending bot move
   CX.sel = null; CX.last = null; CX.busy = true;
   try { const r = await api("/api/cross/new", { n }); Object.assign(CX, { board: r.board, turn: r.turn, active: r.active, n: r.n, moves: r.moves, over: r.over, winner: r.winner }); }
   catch (e) { CX.busy = false; return; }
@@ -2637,6 +2432,7 @@ async function cxNew(n) {
 }
 function cxClose() {
   const m = document.getElementById("cxGame"); if (m) m.classList.add("hidden");
+  if (CX.aiTimer) { clearTimeout(CX.aiTimer); CX.aiTimer = null; }   // stop a pending bot move
   if (CX.ws) { try { CX.ws.close(); } catch (e) {} CX.ws = null; }
   CX.online = false; CX.myseat = null; CX.ai = null; CX.names = null;
 }
@@ -2668,7 +2464,10 @@ function cxOnlineOpen(n) {
   CX.ws = ws;
   ws.onopen = () => { try { ws.send(JSON.stringify({ type: "quick", n: CX.n, name: (AUTH && AUTH.id) || "플레이어" })); } catch (e) {} };
   ws.onmessage = (ev) => { let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; } cxOnMsg(msg); };
-  ws.onclose = () => { if (CX.online && !CX.over && CX.myseat == null) cxSetStatus(T("tri_conn_fail")); };
+  ws.onclose = () => {
+    if (CX.ws === ws) CX.ws = null;          // so later cxMove sends fail fast, not into a dead socket
+    if (CX.online && !CX.over) { CX.busy = false; cxSetStatus(T("tri_conn_fail")); }
+  };
   if (typeof metric === "function") metric("cross_online_" + n);
 }
 function cxSetStatus(html) { const el = document.getElementById("cxInfo"); if (el) el.innerHTML = html; }
@@ -2719,20 +2518,22 @@ function cxPickAI() {
   let best = [], bestScore = -1;
   for (const mv of ms) {
     const victim = CX.board[mv[1]];
-    let score = victim ? (TRI_VAL[victim[1]] || 1) * 10 : 0;
+    let score = victim ? (PIECE_VALUES[victim[1]] || 1) * 10 : 0;
     const mover = CX.board[mv[0]];
     if (mover && mover[1] === "P") score += 1;
-    score += Math.floor(triRand() * 3);
+    score += Math.floor(rand() * 3);
     if (score > bestScore) { bestScore = score; best = [mv]; }
     else if (score === bestScore) best.push(mv);
   }
-  return best[Math.floor(triRand() * best.length)];
+  return best[Math.floor(rand() * best.length)];
 }
 function cxMaybeAI() {
   if (!CX.ai || CX.over || CX.online) return;
   if (CX.ai.indexOf(CX.turn) < 0) return;          // human's turn
   CX.busy = true; cxRender();
-  setTimeout(() => {
+  if (CX.aiTimer) clearTimeout(CX.aiTimer);
+  CX.aiTimer = setTimeout(() => {
+    CX.aiTimer = null;
     if (!CX.ai || CX.over) { CX.busy = false; return; }
     const mv = cxPickAI(); CX.busy = false;
     if (mv) cxMove(mv[0], mv[1]);
@@ -2769,7 +2570,7 @@ function cxRender() {
     const [x, y] = cxXY(i); const cx = x * U + U / 2, cy = y * U + U / 2;
     s += '<text x="' + cx + '" y="' + (cy + 9) + '" text-anchor="middle" font-size="26" ' +
       'fill="' + CX_FILL[occ[0]] + '" stroke="' + CX_STROKE[occ[0]] + '" stroke-width="0.9" pointer-events="none">' +
-      TRI_GLYPH[occ[1].toLowerCase()] + "</text>";
+      PIECE_GLYPH[occ[1].toLowerCase()] + "</text>";
   }
   svg.innerHTML = s;
   svg.querySelectorAll("[data-cx]").forEach((el) => { el.onclick = () => cxClick(+el.dataset.cx); });
@@ -3679,9 +3480,6 @@ if ($("bossClose")) $("bossClose").onclick = () => closeBossModal();
 document.querySelectorAll("[data-odds]").forEach((b) => { b.onclick = () => startOdds(b.dataset.odds); });   // MODE4
 if ($("endgameBtn")) $("endgameBtn").onclick = () => openEndgameModal();   // MODE7
 if ($("egClose")) $("egClose").onclick = () => closeEndgameModal();
-if ($("triBtn")) $("triBtn").onclick = () => triOpen();                     // 3-player hotseat
-if ($("triAiBtn")) $("triAiBtn").onclick = () => triStartVsAI();            // 3-player vs 2 bots
-if ($("triOnlineBtn")) $("triOnlineBtn").onclick = () => triOnlineOpen();   // 3-player online
 // --- Cross (plus-shaped) 3/4-player chess ---
 function cxRestart(n) { if (CX.online) return; CX.n = n; if (CX.ai) cxStartVsAI(n); else cxOpen(n); }
 if ($("cxAiBtn3")) $("cxAiBtn3").onclick = () => cxStartVsAI(3);
@@ -3692,8 +3490,6 @@ if ($("cxOnlineBtn4")) $("cxOnlineBtn4").onclick = () => cxOnlineOpen(4);
 if ($("cxNew3Btn")) $("cxNew3Btn").onclick = () => cxRestart(3);
 if ($("cxNew4Btn")) $("cxNew4Btn").onclick = () => cxRestart(4);
 if ($("cxCloseBtn")) $("cxCloseBtn").onclick = () => cxClose();
-if ($("triNewBtn")) $("triNewBtn").onclick = () => triNew();
-if ($("triCloseBtn")) $("triCloseBtn").onclick = () => triClose();
 if ($("opSaveBtn")) $("opSaveBtn").onclick = () => repSaveCurrentOpening();   // FEAT4
 $("pzPrev").onclick = () => loadPuzzle(PZ.idx - 1);
 $("pzNext").onclick = () => loadPuzzle(PZ.idx + 1);
@@ -4441,7 +4237,9 @@ function updateOgAuthGate() {
   const on = !!AUTH.token;
   gate.classList.toggle("hidden", on);
   body.classList.toggle("hidden", !on);
-  if (on && $("ogName")) $("ogName").value = AUTH.id || t("og_player");
+  // localized name (bug fix: the input had a hardcoded Korean "플레이어" so the
+  // t("og_player") fallback was dead for EN/JA/ZH/ES guests)
+  if ($("ogName")) $("ogName").value = on ? (AUTH.id || t("og_player")) : t("og_player");
 }
 $("ogLoginBtn").onclick = openAuth;
 function requireLogin() {
@@ -4519,7 +4317,7 @@ function applyProgress(p) {
   p = p || {};
   if (typeof p.rating === "number") localStorage.setItem("cc_rating3", String(Math.max(0, Math.round(p.rating))));
   if (Array.isArray(p.history)) localStorage.setItem("cc_history", JSON.stringify(p.history));
-  if (typeof p.bestLevel === "number") localStorage.setItem("cc_best_level", String(p.bestLevel));
+  if (typeof p.bestLevel === "number") localStorage.setItem("cc_best_level", String(Math.max(p.bestLevel, bestLevel())));
   if (typeof p.bestStreak === "number") localStorage.setItem("cc_streak_best", String(Math.max(p.bestStreak, bestStreak())));
   // daily-puzzle streak: keep the most advanced (later date / higher best)
   if (typeof p.pzStreak === "number") localStorage.setItem("cc_pz_streak", String(Math.max(p.pzStreak, pzStreak())));
@@ -5942,7 +5740,7 @@ function checkSharedGame() {
     } catch (e) {}
   }, 500);
 }
-if ($("rvShare")) $("rvShare").onclick = () => shareGame(LAST_REQ);
+if ($("rvShareGame")) $("rvShareGame").onclick = () => shareGame(LAST_REQ);
 
 // =========================================================================== //
 // GROWTH LOOPS (Batch 5): funnel metrics (ADD10), referral + puzzle-challenge

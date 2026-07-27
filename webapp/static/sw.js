@@ -2,13 +2,13 @@
    updates instant. The API and WebSocket always go straight to the network;
    the HTML is network-first (so a new deploy's ?v= assets load immediately),
    and versioned static assets are cache-first. Bump CACHE to purge old caches. */
-const CACHE = "matevio-v69";
+const CACHE = "matevio-v70";
 const MSG_CACHE = "matevio-msg";   // holds the localized reminder text (never purged)
+// NOTE: style.css / i18n.js / app.js are intentionally NOT precached — the page
+// always requests them as ?v=<build>, so unversioned precache entries never match
+// (dead weight). They enter the cache-first runtime cache on first real request.
 const SHELL = [
   "/",
-  "/static/style.css",
-  "/static/i18n.js",
-  "/static/app.js",
   "/static/puzzles.json",
   "/static/icons/icon-192.png",
   "/static/icons/icon-512.png",
@@ -80,7 +80,13 @@ self.addEventListener("fetch", (e) => {
   if (req.mode === "navigate") {
     e.respondWith(
       fetch(req)
-        .then((r) => { const copy = r.clone(); caches.open(CACHE).then((c) => c.put("/", copy)); return r; })
+        .then((r) => {
+          // only cache a GOOD page as the offline shell — a cold-start 502/503 from
+          // the free tier is a resolved response too, and caching it would serve the
+          // error page forever offline.
+          if (r && r.ok) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put("/", copy)); }
+          return r;
+        })
         .catch(() => caches.match("/"))
     );
     return;

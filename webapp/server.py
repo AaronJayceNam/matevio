@@ -727,12 +727,6 @@ register_auth(app)
 # MODE2: correspondence / daily chess (async games in Neon) + MODE8 async swiss
 from webapp.corr import register_corr  # noqa: E402
 register_corr(app)
-# 3-player Trident chess engine endpoints (hotseat)
-from webapp.trident import register_trident  # noqa: E402
-register_trident(app)
-# 3-player Trident online lobby (WebSocket /ws3)
-from webapp.trident_online import register_trident_online  # noqa: E402
-register_trident_online(app)
 # Cross (plus-shaped) 3/4-player chess: engine endpoints + online lobby (/wsc)
 from webapp.cross import register_cross  # noqa: E402
 register_cross(app)

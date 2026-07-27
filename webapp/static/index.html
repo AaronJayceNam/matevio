@@ -33,7 +33,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=138">
+<link rel="stylesheet" href="/static/style.css?v=139">
 </head>
 <body>
 
@@ -81,18 +81,6 @@
   </div>
 </div>
 
-<!-- 3-player Trident chess (hotseat) -->
-<div class="tri-game hidden" id="triGame">
-  <div class="tri-top">
-    <div class="tri-info" id="triInfo"></div>
-    <div class="tri-actions">
-      <button class="ghost" id="triNewBtn" data-i18n="tri_new">새 게임</button>
-      <button class="ghost" id="triCloseBtn" data-i18n="landing_skip">닫기</button>
-    </div>
-  </div>
-  <svg id="triBoard" viewBox="0 0 440 470" xmlns="http://www.w3.org/2000/svg" aria-label="3-player board"></svg>
-  <div class="tri-help" data-i18n="tri_help">같은 기기에서 3명이 번갈아 둡니다 · 시계방향 · 먼저 체크메이트하면 즉시 우승</div>
-</div>
 
 <!-- Cross (plus-shaped) 3/4-player chess overlay -->
 <div class="tri-game hidden" id="cxGame">
@@ -279,7 +267,7 @@
           </div>
           <div class="og-field">
             <label class="field" data-i18n="og_nick_label">닉네임 (계정 아이디)</label>
-            <input type="text" id="ogName" value="플레이어" maxlength="20" readonly>
+            <input type="text" id="ogName" maxlength="20" readonly>
           </div>
           <div class="og-actions">
             <button class="primary" id="ogQuick" data-i18n="og_quick">⚡ 빠른 매치 찾기</button>
@@ -726,7 +714,7 @@
         <span style="color:#c62828">● <span data-i18n="cls_blunder">블런더</span></span>
       </div>
       <div class="controls" style="margin-top:8px">
-        <button class="ghost" id="rvShare" data-i18n="share_btn">🔗 이 게임 공유</button>
+        <button class="ghost" id="rvShareGame" data-i18n="share_btn">🔗 이 게임 공유</button>
       </div>
     </div>
 
@@ -739,7 +727,7 @@
         <p style="font-size:13px;color:#9aa0a6;margin:0 0 10px" data-i18n="rv_share_desc">
           AI가 만든 수별 해설이 담긴 공유본을 만듭니다. 보드의 화살표/강조도 함께 들어갑니다.</p>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="primary" id="rvShare" data-i18n="rv_share_btn">🔗 AI 해설 공유본(HTML) 저장</button>
+          <button class="primary" id="rvShareReview" data-i18n="rv_share_btn">🔗 AI 해설 공유본(HTML) 저장</button>
           <button class="ghost" id="rvExport" data-i18n="rv_export_btn">⬇ 주석 PGN</button>
         </div>
         <div class="status" id="rvShareStatus" data-i18n="rv_share_status">공유본은 인터넷 없이 열리는 단일 파일입니다. 사람들에게 그대로 보내세요.</div>
@@ -963,8 +951,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=138"></script>
-<script src="/static/app.js?v=138"></script>
+<script src="/static/i18n.js?v=139"></script>
+<script src="/static/app.js?v=139"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {
