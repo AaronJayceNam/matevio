@@ -400,12 +400,6 @@ class Lobby:
             await self._finish(game, end_result, end_reason)
 
     async def rematch(self, ws: WebSocket) -> None:
-        try:
-            await self._rematch_impl(ws)
-        except Exception as e:   # TEMP: surface the real error instead of dying silently
-            await _send(ws, {"type": "rematch_debug", "err": repr(e)})
-
-    async def _rematch_impl(self, ws: WebSocket) -> None:
         """F8: offer/accept a rematch against the same opponent. When both players
         of the just-finished game have asked, start a fresh game between them."""
         go = None
@@ -423,11 +417,6 @@ class Lobby:
                 self.rematch.pop(partner, None)
             else:
                 notify = partner
-            dbg = {"type": "rematch_debug", "hasRec": rec is not None,
-                   "partnerNone": partner is None, "precNone": prec is None,
-                   "go": bool(go), "notify": notify is not None,
-                   "keys": len(self.rematch)}
-        await _send(ws, dbg)
         if go:
             await self._start_game(go[0], go[1])
         elif notify is not None:
@@ -723,4 +712,3 @@ def register_online(app: FastAPI, legal_state, rating_hooks: dict | None = None)
 
     return lobby
 
-# redeploy marker: force rebuild of the online module layer
