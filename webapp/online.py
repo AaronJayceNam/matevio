@@ -139,6 +139,9 @@ class Lobby:
         self.games: dict[WebSocket, Game] = {}
         self.by_gid: dict[str, Game] = {}   # live games (authoritative set; used by the sweeper)
         self._sweeper: asyncio.Task | None = None
+        # F8: after a game ends, each still-connected socket -> its rematch record
+        # {partner, self_t:(ws,name,rating,uid), want:bool}. Both wanting -> new game.
+        self.rematch: dict[WebSocket, dict] = {}
 
     # ------------------------------------------------------------------ #
     def _state(self, game: Game) -> dict:
@@ -235,6 +238,12 @@ class Lobby:
             if info:
                 end["rating"] = info["white"] if c == chess.WHITE else info["black"]
             await _send(game.ws[c], end)
+        # F8: remember the pairing so either player can offer a rematch
+        for c in (chess.WHITE, chess.BLACK):
+            w = game.ws[c]
+            if w is not None:
+                self.rematch[w] = {"partner": game.ws[not c], "want": False,
+                                   "self_t": (w, game.names[c], game.ratings[c], game.uids[c])}
         self._fire_delete(game.gid)   # FIX5: finished game no longer needs a snapshot
 
     async def _start_game(self, a, b) -> None:
@@ -390,6 +399,29 @@ class Lobby:
         if end_result is not None:
             await self._finish(game, end_result, end_reason)
 
+    async def rematch(self, ws: WebSocket) -> None:
+        """F8: offer/accept a rematch against the same opponent. When both players
+        of the just-finished game have asked, start a fresh game between them."""
+        go = None
+        notify = None
+        async with self.lock:
+            rec = self.rematch.get(ws)
+            if not rec:
+                return await _send(ws, {"type": "error", "message": "재대국을 시작할 수 없습니다."})
+            partner = rec.get("partner")
+            prec = self.rematch.get(partner)
+            rec["want"] = True
+            if partner is not None and prec is not None and prec.get("want"):
+                go = (rec["self_t"], prec["self_t"])
+                self.rematch.pop(ws, None)
+                self.rematch.pop(partner, None)
+            else:
+                notify = partner
+        if go:
+            await self._start_game(go[0], go[1])
+        elif notify is not None:
+            await _send(notify, {"type": "rematch_offer"})
+
     async def resign(self, ws: WebSocket) -> None:
         async with self.lock:
             game = self.games.get(ws)
@@ -514,6 +546,7 @@ class Lobby:
         snap = None
         async with self.lock:
             self._drop_from_lobby(ws)
+            self.rematch.pop(ws, None)         # F8: drop any pending rematch offer
             g = self.games.get(ws)
             if g is None:
                 return
@@ -662,6 +695,8 @@ def register_online(app: FastAPI, legal_state, rating_hooks: dict | None = None)
                     await lobby.move(ws, str(msg.get("uci") or ""))
                 elif t == "resign":
                     await lobby.resign(ws)
+                elif t == "rematch":
+                    await lobby.rematch(ws)
                 elif t == "draw_offer":
                     await lobby.draw_offer(ws)
                 elif t == "draw_accept":

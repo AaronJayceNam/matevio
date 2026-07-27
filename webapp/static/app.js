@@ -35,6 +35,16 @@ async function api(path, body) {
 function showWarming() { const el = document.getElementById("warmBanner"); if (el) { el.textContent = (typeof t === "function") ? t("warming_msg") : "서버 깨우는 중…"; el.classList.remove("hidden"); } }
 function hideWarming() { const el = document.getElementById("warmBanner"); if (el) el.classList.add("hidden"); }
 const $ = (id) => document.getElementById(id);
+// D5: one modal open/close path with registered teardown, so every overlay
+// cleans up the same way (socket close, timers, selection reset) instead of each
+// feature remembering its own side effects. Register teardown with onModalClose.
+const _MODAL_TEARDOWN = {};
+function onModalClose(id, fn) { _MODAL_TEARDOWN[id] = fn; }
+function openModal(id) { const m = $(id); if (m) m.classList.remove("hidden"); }
+function closeModal(id) {
+  const m = $(id); if (m) m.classList.add("hidden");
+  const fn = _MODAL_TEARDOWN[id]; if (typeof fn === "function") { try { fn(); } catch (e) {} }
+}
 // Trailing ︎ = text-presentation selector: forces iOS/Safari to render the
 // chess symbols as TEXT (so our .pc.w/.pc.b CSS colors apply) instead of as
 // same-colored emoji, which made white and black pieces look identical.
@@ -2430,12 +2440,13 @@ async function cxNew(n) {
   catch (e) { CX.busy = false; return; }
   CX.busy = false; cxRender();
 }
-function cxClose() {
-  const m = document.getElementById("cxGame"); if (m) m.classList.add("hidden");
+function cxTeardown() {
   if (CX.aiTimer) { clearTimeout(CX.aiTimer); CX.aiTimer = null; }   // stop a pending bot move
   if (CX.ws) { try { CX.ws.close(); } catch (e) {} CX.ws = null; }
   CX.online = false; CX.myseat = null; CX.ai = null; CX.names = null;
 }
+function cxClose() { closeModal("cxGame"); }
+onModalClose("cxGame", cxTeardown);   // D5: teardown runs on any close path
 async function cxOpen(n) {                          // hotseat: everyone local
   const m = document.getElementById("cxGame"); if (m) m.classList.remove("hidden");
   CX.online = false; CX.ai = null; CX.names = null; CX.n = n;
@@ -3963,6 +3974,14 @@ function ogHandle(msg) {
     case "opp_reconnected":
       setStatus("ogStatus", t("og_opp_reconnected"));
       break;
+    case "rematch_offer":   // F8: opponent wants to play again — tap 재대국 to accept
+      hideResult();
+      setStatus("ogStatus", t("og_rematch_offer"), true);
+      presentResult({ kind: "draw", icon: "🔄", title: t("og_rematch_offer_t"),
+        sub: t("og_rematch_offer"), actions: [
+          { label: t("og_rematch"), primary: true, onClick: () => ogSend({ type: "rematch" }) },
+          { label: t("og_new_match"), onClick: ogReset }] });
+      break;
     case "resume_ok":
       OG.reconnecting = false; OG.reconnectDeadline = null;
       OG.started = true; OG.over = false;
@@ -4115,6 +4134,7 @@ function ogEnd(result, reason, rInfo) {
     actions.push({ label: t("ai_review_btn"), primary: true,
       onClick: () => runAnalyze(reviewReq, "ogStatus") });
   }
+  actions.push({ label: t("og_rematch"), onClick: () => { ogSend({ type: "rematch" }); setStatus("ogStatus", t("og_rematch_sent")); } });
   actions.push({ label: t("og_new_match"), onClick: ogReset });
   const _nextOg = (typeof nextTodoAction === "function") ? nextTodoAction(["📊"]) : null;   // ADD9
   if (_nextOg) actions.push(_nextOg);

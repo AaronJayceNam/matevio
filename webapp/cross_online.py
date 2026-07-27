@@ -19,10 +19,16 @@ Wire protocol (JSON):
 from __future__ import annotations
 
 import asyncio
+import os
+import time
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from webapp.cross import Cross, moves_for
+
+# F5: a seat that never moves would freeze the game for everyone. If the side to
+# move idles longer than this, the game is aborted so the others aren't stuck.
+TURN_LIMIT = float(os.environ.get("CC_CROSS_TURN_LIMIT", "180"))
 
 
 async def _send(ws, payload):
@@ -37,6 +43,8 @@ class CrossLobby:
         self.lock = asyncio.Lock()
         self.queues = {3: [], 4: []}       # n -> list of (ws, name)
         self.games = {}                    # ws -> game dict
+        self.live = set()                  # set of active game dicts (for the idle sweeper)
+        self._sweeper = None
 
     def _state(self, eng):
         d = eng.to_dict()
@@ -61,9 +69,12 @@ class CrossLobby:
                 seat_ids = list(eng.active)            # engine seat id per player
                 names = [t[1] for t in trio]
                 game = {"engine": eng, "seats": seats, "seat_ids": seat_ids,
-                        "names": names, "n": n}
+                        "names": names, "n": n, "active_at": time.monotonic()}
                 for s in seats:
                     self.games[s] = game
+                self.live.append(game)
+                if self._sweeper is None or self._sweeper.done():
+                    self._sweeper = asyncio.create_task(self._sweep())
                 start = game
         if start is not None:
             st = self._state(start["engine"])
@@ -98,6 +109,7 @@ class CrossLobby:
                 return await _send(ws, {"type": "error", "message": "둘 수 없는 수입니다."})
             if not eng.push(frm, to):
                 return await _send(ws, {"type": "error", "message": "둘 수 없는 수입니다."})
+            game["active_at"] = time.monotonic()          # F5: reset the idle timer
             broadcast = (game, self._state(eng), [frm, to], eng.over, eng.winner)
         if broadcast is not None:
             game, st, last, over, winner = broadcast
@@ -110,6 +122,8 @@ class CrossLobby:
                 async with self.lock:
                     for s in game["seats"]:
                         self.games.pop(s, None)
+                    if game in self.live:
+                        self.live.remove(game)
 
     async def disconnect(self, ws):
         others = None
@@ -121,9 +135,37 @@ class CrossLobby:
                 others = [s for s in game["seats"] if s is not ws]
                 for s in others:
                     self.games.pop(s, None)
+                if game in self.live:
+                    self.live.remove(game)
         if others:
             for s in others:
                 await _send(s, {"type": "aborted", "reason": "opponent_left"})
+
+    async def _sweep(self):
+        """F5: abort a game whose side-to-move has idled past TURN_LIMIT, so a
+        walk-away can't freeze the board for the other players forever."""
+        while True:
+            await asyncio.sleep(5.0)
+            now = time.monotonic()
+            dead = []
+            async with self.lock:
+                for game in list(self.live):
+                    if game["engine"].over:
+                        self.live.remove(game)
+                        continue
+                    if now - game.get("active_at", now) > TURN_LIMIT:
+                        dead.append(game)
+                        self.live.remove(game)
+                        for s in game["seats"]:
+                            self.games.pop(s, None)
+                stop = not self.live
+                if stop:
+                    self._sweeper = None
+            for game in dead:
+                for s in game["seats"]:
+                    await _send(s, {"type": "aborted", "reason": "idle"})
+            if stop:
+                return
 
 
 def register_cross_online(app: FastAPI) -> CrossLobby:
