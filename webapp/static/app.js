@@ -16,10 +16,18 @@ function _apiEnd() {
   _apiInflight = Math.max(0, _apiInflight - 1);
   if (_apiInflight === 0) { clearTimeout(_warmTimer); _warmTimer = null; if (typeof hideWarming === "function") hideWarming(); }
 }
+// Static-split ready: to host this frontend on a fast static host/CDN (a different
+// origin), set `window.CC_BACKEND` to the API origin, e.g. "https://matevio.com".
+// Empty (default) = same-origin, so behavior is unchanged when served by the app.
+const BACKEND = (typeof window !== "undefined" && window.CC_BACKEND) ? String(window.CC_BACKEND).replace(/\/+$/, "") : "";
+function wsBase() {
+  if (BACKEND) return BACKEND.replace(/^http/, "ws");   // https→wss, http→ws
+  return (location.protocol === "https:" ? "wss://" : "ws://") + location.host;
+}
 async function api(path, body) {
   _apiStart();
   try {
-    const res = await fetch(path, {
+    const res = await fetch(BACKEND + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body || {}),
@@ -2470,7 +2478,7 @@ function cxOnlineOpen(n) {
   const T = (typeof t === "function") ? t : ((k) => k);
   Object.assign(CX, { online: true, myseat: null, ai: null, board: null, over: false, winner: null, sel: null, last: null, busy: false, names: null, n });
   cxSetStatus(T("tri_connecting"));
-  let ws; try { ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/wsc"); }
+  let ws; try { ws = new WebSocket(wsBase() + "/wsc"); }
   catch (e) { cxSetStatus(T("tri_conn_fail")); return; }
   CX.ws = ws;
   ws.onopen = () => { try { ws.send(JSON.stringify({ type: "quick", n: CX.n, name: (AUTH && AUTH.id) || "플레이어" })); } catch (e) {} };
@@ -3775,7 +3783,7 @@ function ogSend(payload) {
 function ogConnect(then) {
   if (OG.ws && OG.ws.readyState === WebSocket.OPEN) { then && then(); return; }
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  const ws = new WebSocket(wsBase() + "/ws");
   OG.ws = ws;
   ws.onopen = () => {
     if (OG.pingTimer) clearInterval(OG.pingTimer);
@@ -3808,7 +3816,7 @@ function ogTryReconnect() {
   OG.reconnecting = true;
   setStatus("ogStatus", t("og_reconnecting"), true);
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  const ws = new WebSocket(wsBase() + "/ws");
   OG.ws = ws;
   ws.onopen = () => {
     if (OG.pingTimer) clearInterval(OG.pingTimer);

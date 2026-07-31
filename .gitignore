@@ -21,3 +21,8 @@ Thumbs.db
 /out/
 *.report.json
 data/users.db
+
+# editor/scratch backups — never ship
+*.bak.*
+*.bak
+__pycache__/

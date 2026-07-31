@@ -178,6 +178,29 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Matevio", lifespan=lifespan)
 
+# Speed: long-cache the versioned static assets so repeat visits don't re-download
+# app.js/i18n/etc. Assets are requested as ?v=<build>, so a new build = new URL —
+# safe to mark immutable. Unversioned /static files get a short cache instead.
+@app.middleware("http")
+async def _static_cache(request, call_next):
+    resp = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/"):
+        if request.url.query:                       # versioned (?v=…) → cache hard
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            resp.headers.setdefault("Cache-Control", "public, max-age=3600")
+    return resp
+
+# Static-split prep: if the frontend is later hosted on a different origin (a fast
+# static host/CDN), allow it to call this API/WebSocket. Same-origin needs no CORS,
+# so this stays inert until CC_ALLOWED_ORIGINS is set (comma-separated origins).
+_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("CC_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+if _ALLOWED_ORIGINS:
+    from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+    app.add_middleware(CORSMiddleware, allow_origins=_ALLOWED_ORIGINS,
+                       allow_methods=["*"], allow_headers=["*"], allow_credentials=False)
+
 
 # --------------------------------------------------------------------------- #
 # Models
