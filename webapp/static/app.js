@@ -488,7 +488,7 @@ document.querySelectorAll("[data-goto]").forEach((b) => {
 (async () => {
   try {
     { const _el = $("sfStatus"); if (_el) _el.textContent = t("sf_checking"); }
-    const h = await (await fetch("/api/health")).json();
+    const h = await (await fetch(BACKEND + "/api/health")).json();
     const el = $("sfStatus");
     if (h.stockfish) {
       el.innerHTML = t("sf_connected") + (h.coaching ? t("sf_coach_on") : t("sf_coach_off"));

@@ -1,0 +1,12 @@
+name = "matevio-keepalive"
+main = "keepalive-worker.js"
+compatibility_date = "2024-11-01"
+
+# Ping every 5 minutes — comfortably under Render's ~15-min sleep threshold, so
+# the backend never sleeps and no user ever sees the "waking up" message.
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Which URL to ping. Change here (or set in the dashboard) if the domain changes.
+[vars]
+PING_URL = "https://matevio.com/api/health"
