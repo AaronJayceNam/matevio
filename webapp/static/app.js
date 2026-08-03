@@ -1689,6 +1689,14 @@ function renderAiPbars() {
   const opp = aiOppInfo();
   top.innerHTML = html(opp.name, opp.rating, false, turnOf(theirs), theirs, aiOppFace());
   bottom.innerHTML = html(AUTH.id || t("og_me"), myRating(), true, turnOf(mine), mine, null);
+  // [수정] AI 보드도 기물 바 · 잡은 기물 레일 · 차례 글로우를 실제로 갱신
+  const st = AIG.state;
+  if (st && st.fen) {
+    setMaterialBar("aiEval", st.fen, AIG.human);
+    setCapRail("aiCapRail", st.fen, AIG.human);
+  }
+  setTurnGlow("aiGlow", AIG.started && !AIG.over && !AIG.thinking && st && st.turn === AIG.human,
+              st && st.check);
 }
 
 function updateAiTurn() {
@@ -3867,7 +3875,10 @@ function renderPbars() {
   if (bottom) bottom.classList.toggle("turn-on", !!(OG.started && !OG.over && myTurn));
   setTurnGlow("ogGlow", OG.started && !OG.over && myTurn, OG.state && OG.state.check);   // [대형14]
   setBigClock(mine, theirs);                                                             // [대형15]
-  if (OG.state) setCapRail("ogCapRail", OG.state.fen, OG.color);                          // [대형5]
+  if (OG.state) {
+    setCapRail("ogCapRail", OG.state.fen, OG.color);                                     // [대형5]
+    setMaterialBar("ogEval", OG.state.fen, OG.color);                                    // [수정]
+  }
 }
 setInterval(() => { if (OG.started) renderPbars(); }, 250);
 
@@ -4010,12 +4021,19 @@ function vsIntro(meName, meRt, opName, opRt, opFace) {
   setTimeout(() => el.classList.add("hidden"), 1500);
 }
 
-// [대형6] 평가바 — cp 값을 0~100% 높이로
-function setEvalBar(id, cp) {
-  const el = $(id); if (!el) return;
+// [수정] 바는 "기물 우세"를 보여준다. 브라우저에는 체스 엔진이 없으므로(GPL)
+// 엔진 평가 대신, FEN에서 정확히 계산되는 기물 점수 차를 표시한다.
+function setMaterialBar(id, fen, myColor) {
+  const el = $(id); if (!el || !fen) return;
   const i = el.querySelector("i"); if (!i) return;
-  const pct = 50 + 50 * (2 / (1 + Math.exp(-(cp || 0) / 380)) - 1);
+  const info = (typeof materialInfo === "function") ? materialInfo(fen) : null;
+  if (!info) return;
+  const lead = info.wLead;                       // + = 백이 앞섬 (폰 단위)
+  const mine = (myColor === "b") ? -lead : lead; // 내 관점
+  // ±9점(퀸 하나)에서 바가 거의 끝까지 차도록
+  const pct = 50 + 50 * Math.max(-1, Math.min(1, mine / 9));
   i.style.height = Math.max(3, Math.min(97, pct)) + "%";
+  el.title = mine === 0 ? "기물 동등" : (mine > 0 ? "+" + mine : String(mine));
 }
 // [대형5] 잡은 기물 레일
 function setCapRail(id, fen, myColor) {

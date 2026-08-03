@@ -1986,3 +1986,29 @@ body.ingame .fab{ display:none; }
   .vs-ava{ width:70px; height:70px; font-size:30px; }
   .vs-bolt{ font-size:34px; }
 }
+
+/* =========================================================================
+   FIX — the board was being cut off, and the bar showed nothing real
+   ========================================================================= */
+/* The board no longer sits alone: it now has an eval/material bar, a capture
+   rail and a 10px frame on each side. --board must subtract that chrome or the
+   rig overflows the viewport and the board gets clipped.
+   chrome = bar 14 + gap 10 + frame 20 + gap 10 + rail 34 = 88px            */
+:root{ --rig-chrome:88px; --board:min(76vh, 600px, calc(96vw - var(--rig-chrome))); }
+body.ingame{ --board:min(78vh, 640px, calc(96vw - var(--rig-chrome))); }
+@media (max-width: 560px){
+  /* the capture rail is hidden on phones → only bar 14 + gap 6 + frame 20 + 6 */
+  :root, body.ingame{ --rig-chrome:46px; }
+  .boardstack{ padding:6px; border-radius:12px; }
+}
+.board-rig{ max-width:100%; }
+.boardstack{ flex:0 0 auto; }
+/* never let the rig push the page sideways */
+.boardwrap{ overflow-x:clip; max-width:100%; }
+
+/* the bar measures MATERIAL (piece value), which is what we can compute
+   honestly in the browser — no chess engine ships to the client. */
+.evalbar{ position:relative; }
+.evalbar::after{ content:""; position:absolute; left:0; right:0; top:50%; height:1px;
+  background:rgba(255,255,255,.28); }
+.matlead{ font-size:11px; font-weight:800; color:var(--muted); text-align:center; margin-top:4px; }
