@@ -2050,6 +2050,7 @@ function renderAiLevels() {
 }
 function setAiLevel(lv) {
   const inp = $("aiLevel"); inp.value = lv;
+  if (typeof syncOppBtn === "function") setTimeout(syncOppBtn, 0);   // [대형2]
   const lab = $("aiLevelLabel"); if (lab) lab.textContent = aiLevelText(lv);
   renderAiLevels();
 }
@@ -3864,6 +3865,9 @@ function renderPbars() {
   const myTurn = OG.state && OG.state.turn === OG.color;
   if (top) top.classList.toggle("turn-on", !!(OG.started && !OG.over && !myTurn));
   if (bottom) bottom.classList.toggle("turn-on", !!(OG.started && !OG.over && myTurn));
+  setTurnGlow("ogGlow", OG.started && !OG.over && myTurn, OG.state && OG.state.check);   // [대형14]
+  setBigClock(mine, theirs);                                                             // [대형15]
+  if (OG.state) setCapRail("ogCapRail", OG.state.fen, OG.color);                          // [대형5]
 }
 setInterval(() => { if (OG.started) renderPbars(); }, 250);
 
@@ -3964,6 +3968,81 @@ if ($("lobbyAi")) $("lobbyAi").onclick = () => { ogSend({ type: "cancel" }); lob
 if ($("ogCreate2")) $("ogCreate2").onclick = () => { const b = $("ogCreate"); if (b) b.click(); };
 if ($("ogCorrTile")) $("ogCorrTile").onclick = () => { const el = $("corrList"); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); };
 if ($("ogCrossTile")) $("ogCrossTile").onclick = () => { const el = $("cxOnlineBtn3"); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); };
+
+
+// =========================================================================== //
+// PLAY v2 — bot portrait picker, VS intro, eval bar, capture rail, turn glow
+// =========================================================================== //
+// [대형2] 상대를 "카드"로 고른다 (숫자 난이도 대신)
+function botPickOpen() {
+  const g = $("botPickGrid"); if (!g) return;
+  const cur = +($("aiLevel").value) || 3;
+  g.innerHTML = AI_LEVEL_PRESETS.map((lv) =>
+    '<button class="botcard' + (lv === cur ? " sel" : "") + '" data-lv="' + lv + '">' +
+      '<span class="bc-face">' + aiFace(lv) + "</span>" +
+      '<span class="bc-name">' + aiTitle(lv) + "</span>" +
+      '<span class="bc-rt">' + aiLevelWord() + " " + aiRatingOf(lv) + "</span>" +
+      '<span class="bc-bar"><i style="width:' + Math.round(lv / 15 * 100) + '%"></i></span>' +
+    "</button>").join("");
+  g.querySelectorAll(".botcard").forEach((b) => {
+    b.onclick = () => { setAiLevel(+b.dataset.lv); botPickClose(); syncOppBtn(); };
+  });
+  $("botPick").classList.remove("hidden");
+}
+function botPickClose() { const el = $("botPick"); if (el) el.classList.add("hidden"); }
+function syncOppBtn() {
+  const lv = +($("aiLevel").value) || 3;
+  if ($("opbFace")) $("opbFace").textContent = aiFace(lv);
+  if ($("opbName")) $("opbName").textContent = aiTitle(lv);
+  if ($("opbSub")) $("opbSub").textContent = aiLevelWord() + " " + aiRatingOf(lv);
+}
+if ($("openBotPick")) $("openBotPick").onclick = botPickOpen;
+setTimeout(() => { if (typeof syncOppBtn === "function") syncOppBtn(); }, 60);   // initial fill
+if ($("botPickClose")) $("botPickClose").onclick = botPickClose;
+
+// [대형11] 대국 시작 순간의 VS 연출
+function vsIntro(meName, meRt, opName, opRt, opFace) {
+  const el = $("vsIntro"); if (!el) return;
+  const set = (id, v) => { const e = $(id); if (e) e.textContent = v; };
+  set("vsMeAva", (meName || "?").charAt(0).toUpperCase()); set("vsMeName", meName || ""); set("vsMeRt", meRt || "");
+  set("vsOpAva", opFace || (opName || "?").charAt(0).toUpperCase()); set("vsOpName", opName || ""); set("vsOpRt", opRt || "");
+  el.classList.remove("hidden");
+  setTimeout(() => el.classList.add("hidden"), 1500);
+}
+
+// [대형6] 평가바 — cp 값을 0~100% 높이로
+function setEvalBar(id, cp) {
+  const el = $(id); if (!el) return;
+  const i = el.querySelector("i"); if (!i) return;
+  const pct = 50 + 50 * (2 / (1 + Math.exp(-(cp || 0) / 380)) - 1);
+  i.style.height = Math.max(3, Math.min(97, pct)) + "%";
+}
+// [대형5] 잡은 기물 레일
+function setCapRail(id, fen, myColor) {
+  const el = $(id); if (!el || !fen) return;
+  const info = (typeof materialInfo === "function") ? materialInfo(fen) : null;
+  if (!info) return;
+  const glyph = (arr) => (arr || []).map((c) => GLYPH[c.toLowerCase()]).join("");
+  // top rail = what the opponent took from me, bottom rail = what I took
+  const mineTook = myColor === "b" ? info.capByBlack : info.capByWhite;
+  const theirsTook = myColor === "b" ? info.capByWhite : info.capByBlack;
+  el.innerHTML = '<span class="cap-op">' + glyph(theirsTook) + "</span>" +
+                 '<span class="cap-me">' + glyph(mineTook) + "</span>";
+}
+// [대형14] 차례를 보드 테두리 빛으로
+function setTurnGlow(id, on, warn) {
+  const el = $(id); if (!el) return;
+  el.classList.toggle("on", !!on);
+  el.classList.toggle("warn", !!warn);
+}
+// [대형15] 큰 시계
+function setBigClock(mine, theirs) {
+  const box = $("ogBigClock"); if (!box) return;
+  box.classList.toggle("hidden", !(OG.started && !OG.over));
+  const a = $("bcOpp"), b = $("bcMe");
+  if (a) a.textContent = fmtClock(theirs);
+  if (b) b.textContent = fmtClock(mine);
+}
 
 function ogName() { return ($("ogName").value || t("og_player")).trim().slice(0, 20) || t("og_player"); }
 // auth token → the server resolves it to the account and owns the rating.
@@ -4068,6 +4147,7 @@ function ogHandle(msg) {
       break;
     case "start":
       lobbyClose();                      // [대형1]
+      vsIntro(ogName(), myRating(), msg.opponent || t("og_opp"), msg.opponentRating || "");  // [대형11]
       ogClearFallback();
       OG.started = true; OG.over = false; OG.ratingApplied = false;
       OG.gid = msg.gid || null; OG.reconnecting = false; OG.reconnectDeadline = null;

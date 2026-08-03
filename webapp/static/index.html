@@ -33,7 +33,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=150">
+<link rel="stylesheet" href="/static/style.css?v=151">
 </head>
 <body>
 
@@ -217,6 +217,26 @@
   </div>
 </div>
 
+
+<!-- [대형11] 대국 시작 = VS 인트로 연출 -->
+<div class="vs-intro hidden" id="vsIntro">
+  <div class="vs-row">
+    <div class="vs-side left"><div class="vs-ava" id="vsMeAva">?</div><div class="vs-name" id="vsMeName"></div><div class="vs-rt" id="vsMeRt"></div></div>
+    <div class="vs-bolt">VS</div>
+    <div class="vs-side right"><div class="vs-ava" id="vsOpAva">?</div><div class="vs-name" id="vsOpName"></div><div class="vs-rt" id="vsOpRt"></div></div>
+  </div>
+</div>
+
+
+<!-- [대형2] AI 상대 = 전체화면 포트레이트 선택 -->
+<div class="botpick hidden" id="botPick">
+  <div class="botpick-head">
+    <h2 data-i18n="botpick_t">상대를 고르세요</h2>
+    <button class="ghost" id="botPickClose" data-i18n="landing_skip">닫기</button>
+  </div>
+  <div class="botpick-grid" id="botPickGrid"></div>
+</div>
+
 <!-- ====================== 온라인 대국 ====================== -->
 <section class="tab" id="tab-online">
   <div class="play-switch" data-pswitch-bar>
@@ -231,8 +251,9 @@
   </svg></div>
   <div class="cols">
     <div>
+      <div class="bigclock hidden" id="ogBigClock"><span id="bcOpp">10:00</span><b id="bcMe">10:00</b></div>
       <div class="pbar hidden" id="ogTopBar"></div>
-      <div class="boardwrap"><div class="boardstack"><div class="cboard" id="ogBoard"></div></div></div>
+      <div class="boardwrap"><div class="board-rig"><div class="evalbar" id="ogEval"><i></i></div><div class="boardstack"><div class="cboard" id="ogBoard"></div><div class="turn-glow" id="ogGlow"></div></div><div class="caprail" id="ogCapRail"></div></div></div>
       <div class="pbar hidden" id="ogBottomBar"></div>
       <div class="game-hud"><div class="turn" id="ogTurn" aria-live="polite" aria-atomic="true"><span class="pill"></span><span data-i18n="og_turn_wait">매치를 시작하면 보드가 열립니다.</span></div>
       <div class="controls">
@@ -488,7 +509,7 @@
     <div>
       <div class="pbar hidden" id="aiTopBar"></div>
       <div class="boardwrap">
-        <div class="boardstack"><div class="cboard" id="aiBoard"></div></div>
+        <div class="board-rig"><div class="evalbar" id="aiEval"><i></i></div><div class="boardstack"><div class="cboard" id="aiBoard"></div><div class="turn-glow" id="aiGlow"></div></div><div class="caprail" id="aiCapRail"></div></div>
       </div>
       <div class="pbar hidden" id="aiBottomBar"></div>
       <div class="game-hud"><div class="turn" id="aiTurn" aria-live="polite" aria-atomic="true"><span class="pill"></span><span data-i18n="turn_start">새 대국을 시작하세요.</span></div>
@@ -512,7 +533,8 @@
         </div>
 
         <label class="field" data-i18n="lbl_difficulty">난이도</label>
-        <div class="diflevels" id="aiLevelBtns" role="group"></div>
+        <button class="opp-pick-btn" id="openBotPick"><span class="opb-face" id="opbFace">🙂</span><span class="opb-txt"><b id="opbName">—</b><span id="opbSub"></span></span><span class="opb-cta" data-i18n="botpick_change">바꾸기 ▸</span></button>
+        <div class="diflevels hidden" id="aiLevelBtns" role="group"></div>
         <input type="range" id="aiLevel" min="1" max="10" value="3" step="1" class="visually-hidden" tabindex="-1" aria-hidden="true">
         <div id="aiLevelLabel" class="visually-hidden">레이팅 600 · 아마추어</div>
 
@@ -999,8 +1021,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=150"></script>
-<script src="/static/app.js?v=150"></script>
+<script src="/static/i18n.js?v=151"></script>
+<script src="/static/app.js?v=151"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {
