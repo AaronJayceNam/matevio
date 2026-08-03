@@ -33,7 +33,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Matevio">
-<link rel="stylesheet" href="/static/style.css?v=149">
+<link rel="stylesheet" href="/static/style.css?v=150">
 </head>
 <body>
 
@@ -202,6 +202,21 @@
   </div>
 </section>
 
+
+<!-- [대형1] 매칭 중에는 설정 화면이 아니라 전용 로비가 화면을 점유한다 -->
+<div class="lobby-screen hidden" id="ogLobby">
+  <div class="lobby-inner">
+    <div class="lobby-radar"><span></span><span></span><span></span><b id="lobbyAva">?</b></div>
+    <h2 class="lobby-title" data-i18n="lobby_searching">상대를 찾는 중…</h2>
+    <div class="lobby-sub" id="lobbySub"></div>
+    <div class="lobby-meta"><span id="lobbyElapsed">0초</span> · <span id="lobbyRange"></span></div>
+    <div class="lobby-actions">
+      <button class="primary" id="lobbyAi" data-i18n="og_fb_btn">🤖 AI와 두기</button>
+      <button class="ghost" id="lobbyCancel" data-i18n="og_cancel">매칭 취소</button>
+    </div>
+  </div>
+</div>
+
 <!-- ====================== 온라인 대국 ====================== -->
 <section class="tab" id="tab-online">
   <div class="play-switch" data-pswitch-bar>
@@ -219,13 +234,13 @@
       <div class="pbar hidden" id="ogTopBar"></div>
       <div class="boardwrap"><div class="boardstack"><div class="cboard" id="ogBoard"></div></div></div>
       <div class="pbar hidden" id="ogBottomBar"></div>
-      <div class="turn" id="ogTurn" aria-live="polite" aria-atomic="true"><span class="pill"></span><span data-i18n="og_turn_wait">매치를 시작하면 보드가 열립니다.</span></div>
+      <div class="game-hud"><div class="turn" id="ogTurn" aria-live="polite" aria-atomic="true"><span class="pill"></span><span data-i18n="og_turn_wait">매치를 시작하면 보드가 열립니다.</span></div>
       <div class="controls">
         <button class="ghost" id="ogResign" data-i18n="og_resign">🏳️ 기권</button>
         <button class="ghost" id="ogDraw" data-i18n="og_draw">🤝 무승부 제안</button>
         <button class="ghost" id="ogFlip" data-i18n="btn_flip">⇅ 보드 뒤집기</button>
         <button class="ghost" id="ogChatToggle" data-i18n="og_chat_btn" aria-expanded="false" aria-controls="ogChat">💬 채팅</button>
-      </div>
+      </div></div>
       <div class="movenav">
         <button class="ghost msnav" id="ogPrev" title="이전 수" data-i18n-title="tt_prev">◀</button>
         <div class="movestrip" id="ogMoveStrip" aria-label="기보"></div>
@@ -258,10 +273,32 @@
           <div style="margin-top:12px"><button class="primary" id="ogLoginBtn" data-i18n="auth_title">👤 로그인 / 회원가입</button></div>
         </div>
         <div id="ogMatchBody">
-          <div class="og-actions">
-            <button class="primary" id="ogQuick" data-i18n="og_quick">⚡ 빠른 매치 찾기</button>
-            <button class="ghost hidden" id="ogCancel" data-i18n="og_cancel">매칭 취소</button>
+          <!-- [대형3] 스택형 설정 대신 모드 타일 그리드 -->
+          <div class="mode-grid">
+            <button class="mode-tile primary-tile" id="ogQuick">
+              <span class="mt-ico">⚡</span>
+              <span class="mt-name" data-i18n="mt_quick">빠른 매치</span>
+              <span class="mt-desc" data-i18n="mt_quick_d">비슷한 실력의 상대와 바로</span>
+            </button>
+            <button class="mode-tile" id="ogCreate2">
+              <span class="mt-ico">🔗</span>
+              <span class="mt-name" data-i18n="mt_friend">친구와</span>
+              <span class="mt-desc" data-i18n="mt_friend_d">초대 코드로 대국</span>
+            </button>
+            <button class="mode-tile" id="ogCorrTile">
+              <span class="mt-ico">📮</span>
+              <span class="mt-name" data-i18n="mt_corr">한 수 대국</span>
+              <span class="mt-desc" data-i18n="mt_corr_d">하루 한 수, 여러 판</span>
+              <span class="pill-badge hidden" id="corrBadge2"></span>
+            </button>
+            <button class="mode-tile" id="ogCrossTile">
+              <span class="mt-ico">♛</span>
+              <span class="mt-name" data-i18n="mt_cross">십자 체스</span>
+              <span class="mt-desc" data-i18n="mt_cross_d">3·4인 대국</span>
+              <span class="pill-badge beta" data-i18n="badge_beta">베타</span>
+            </button>
           </div>
+          <button class="ghost hidden" id="ogCancel" data-i18n="og_cancel">매칭 취소</button>
           <div class="status" id="ogSetupStatus" aria-live="polite" aria-atomic="true"></div>
           <div class="og-rating og-rating-head ogr-compact">
             <div class="ogr-main">
@@ -454,13 +491,13 @@
         <div class="boardstack"><div class="cboard" id="aiBoard"></div></div>
       </div>
       <div class="pbar hidden" id="aiBottomBar"></div>
-      <div class="turn" id="aiTurn" aria-live="polite" aria-atomic="true"><span class="pill"></span><span data-i18n="turn_start">새 대국을 시작하세요.</span></div>
+      <div class="game-hud"><div class="turn" id="aiTurn" aria-live="polite" aria-atomic="true"><span class="pill"></span><span data-i18n="turn_start">새 대국을 시작하세요.</span></div>
       <div class="controls">
         <button class="ghost" id="aiHint" data-i18n="btn_hint">💡 힌트</button>
         <button class="ghost" id="aiUndo" data-i18n="btn_undo">↩️ 무르기</button>
         <button class="ghost" id="aiResign" data-i18n="btn_resign_ai">🏳️ 기권하고 평가받기</button>
         <button class="ghost" id="aiFlip" data-i18n="btn_flip">⇅ 보드 뒤집기</button>
-      </div>
+      </div></div>
       <div class="movenav">
         <button class="ghost msnav" id="aiPrev" title="이전 수" data-i18n-title="tt_prev">◀</button>
         <div class="movestrip" id="aiMoveStrip" aria-label="기보"></div>
@@ -479,6 +516,7 @@
         <input type="range" id="aiLevel" min="1" max="10" value="3" step="1" class="visually-hidden" tabindex="-1" aria-hidden="true">
         <div id="aiLevelLabel" class="visually-hidden">레이팅 600 · 아마추어</div>
 
+        <details class="adv-sheet" id="aiAdv"><summary data-i18n="adv_settings">⚙️ 세부 설정 (스타일 · 색 · 체스960)</summary>
         <label class="field" data-i18n="lbl_style">AI 스타일 (유명 선수처럼 두기)</label>
         <select id="aiStyle" class="visually-hidden" tabindex="-1" aria-hidden="true">
           <option value="default" data-i18n="opt_style_default">기본 (레이팅대로)</option>
@@ -501,6 +539,7 @@
           <input type="checkbox" id="ai960">
           <span><b data-i18n="v960_label">🎲 체스960 (피셔 랜덤)</b><br><span class="setdesc" data-i18n="v960_desc">기물 시작 위치를 무작위로 섞어 새로운 대국을 즐겨요.</span></span>
         </label>
+        </details>
 
         <div class="setup-go"><button class="primary" id="aiStart" data-i18n="btn_newgame">▶ 새 대국 시작</button></div>
         <div class="status" id="aiStatus" aria-live="polite" aria-atomic="true"></div>
@@ -960,8 +999,8 @@
   <a href="/privacy" target="_blank" rel="noopener" data-i18n="set_privacy">개인정보 처리방침</a>
 </footer>
 
-<script src="/static/i18n.js?v=149"></script>
-<script src="/static/app.js?v=149"></script>
+<script src="/static/i18n.js?v=150"></script>
+<script src="/static/app.js?v=150"></script>
 <script>
   // PWA: register the service worker (installable app + fast loads + instant updates)
   function showUpdateBanner() {

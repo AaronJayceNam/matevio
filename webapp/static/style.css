@@ -1767,3 +1767,108 @@ body.ingame .play-switch{ display:none; }
 .cx-modes-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
 /* [11] narrow phones: two even columns instead of ragged wrapping */
 @media (max-width: 400px){ .odds-row, .cx-modes-row{ display:grid; grid-template-columns:1fr 1fr; } }
+
+/* =========================================================================
+   PLAY SCREENS — structural overhaul (10 large changes)
+   ========================================================================= */
+
+/* [대형1] 매칭 전용 전체화면 로비 — 설정 화면에 작은 글씨로 "찾는 중"이 아니라
+   화면 전체가 "지금 상대를 찾고 있다"는 하나의 상태가 된다. */
+.lobby-screen{ position:fixed; inset:0; z-index:80; display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(120% 90% at 50% 0%, var(--panel2) 0%, var(--bg) 70%); padding:24px; }
+.lobby-inner{ text-align:center; max-width:420px; width:100%; }
+.lobby-radar{ position:relative; width:132px; height:132px; margin:0 auto 22px; display:grid; place-items:center; }
+.lobby-radar span{ position:absolute; inset:0; border-radius:50%; border:2px solid var(--accent);
+  opacity:0; animation:radarPing 2.4s cubic-bezier(.2,.7,.4,1) infinite; }
+.lobby-radar span:nth-child(2){ animation-delay:.8s; }
+.lobby-radar span:nth-child(3){ animation-delay:1.6s; }
+.lobby-radar b{ width:64px; height:64px; border-radius:50%; display:grid; place-items:center;
+  background:var(--elevated); border:1px solid var(--line2); font-size:26px; font-weight:800; }
+@keyframes radarPing{ 0%{ transform:scale(.42); opacity:.85 } 100%{ transform:scale(1); opacity:0 } }
+.lobby-title{ font-size:22px; font-weight:900; margin:0 0 6px; }
+.lobby-sub{ color:var(--muted); font-size:var(--fs-sm); min-height:20px; }
+.lobby-meta{ margin-top:10px; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.lobby-actions{ display:flex; flex-direction:column; gap:10px; margin-top:26px; }
+.lobby-actions button{ width:100%; min-height:48px; }
+
+/* [대형3] 온라인 진입 = 모드 타일 그리드 (긴 스택형 카드 대신) */
+.mode-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:var(--space-2) 0; }
+.mode-tile{ position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:2px;
+  padding:14px 13px; min-height:96px; text-align:left; border:1px solid var(--line2); border-radius:var(--r-md);
+  background:var(--elevated); color:var(--ink); cursor:pointer; transition:transform .12s, border-color .12s; }
+.mode-tile:hover{ border-color:var(--accent); transform:translateY(-2px); }
+.mode-tile .mt-ico{ font-size:22px; line-height:1; }
+.mode-tile .mt-name{ font-weight:800; font-size:15px; }
+.mode-tile .mt-desc{ color:var(--muted); font-size:12px; line-height:1.35; }
+.mode-tile .pill-badge{ position:absolute; top:10px; right:10px; }
+.mode-tile.primary-tile{ grid-column:1 / -1; min-height:auto; flex-direction:row; align-items:center; gap:12px;
+  background:linear-gradient(180deg,var(--accent2),var(--accent)); border-color:transparent; color:#fff; }
+.mode-tile.primary-tile .mt-ico{ font-size:26px; }
+.mode-tile.primary-tile .mt-name{ font-size:17px; }
+.mode-tile.primary-tile .mt-desc{ color:rgba(255,255,255,.85); }
+.mode-tile.primary-tile .mt-name, .mode-tile.primary-tile .mt-desc{ display:block; }
+.mode-tile.primary-tile > span:not(.mt-ico){ margin-right:auto; }
+
+/* [대형2] AI 상대 = 숫자 난이도가 아니라 "봇 카드" 그리드 */
+.diflevels{ display:grid !important; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:8px; }
+.diflevel{ display:flex !important; flex-direction:column; align-items:center; gap:3px; padding:12px 8px !important;
+  border-radius:var(--r-md) !important; min-height:104px; justify-content:center; }
+.diflevel .dif-face{ font-size:30px; line-height:1.1; }
+.diflevel b{ font-size:13px; }
+.diflevel span:last-child{ font-size:11px; color:var(--muted); }
+.diflevel.active{ transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,.28); }
+
+/* [대형10] 세부 설정은 접이식 시트로 (기본 화면은 상대 고르기 + 시작뿐) */
+.adv-sheet{ margin-top:var(--space-3); border:1px solid var(--line); border-radius:var(--r-sm); padding:0 12px; }
+.adv-sheet > summary{ cursor:pointer; list-style:none; padding:11px 0; font-weight:700; font-size:var(--fs-sm); color:var(--muted); }
+.adv-sheet > summary::-webkit-details-marker{ display:none; }
+.adv-sheet > summary::after{ content:" ▾"; }
+.adv-sheet[open] > summary::after{ content:" ▴"; }
+.adv-sheet[open]{ padding-bottom:12px; }
+
+/* [대형5] 턴 + 컨트롤을 하나의 HUD 블록으로 묶는다 */
+.game-hud{ width:var(--board); max-width:96vw; display:flex; flex-direction:column; gap:8px; }
+.game-hud .turn{ margin:0; }
+
+/* [대형6] 플레이어 바 재설계 — 이름/레이팅은 쌓고, 시계는 큰 칩, 활성 쪽은 들어올림 */
+.pbar{ padding:9px 12px; border-radius:var(--r-md); transition:border-color .15s, transform .15s, box-shadow .15s; }
+.pbar .pv-ava{ width:38px; height:38px; font-size:16px; border-radius:12px; }
+.pbar .pv-name{ font-weight:800; font-size:14px; }
+.pbar .pv-clock{ font-size:19px !important; padding:7px 12px !important; border-radius:12px; letter-spacing:.5px; }
+.pbar.turn-on{ border-color:var(--accent); box-shadow:0 0 0 1px var(--accent), 0 8px 20px rgba(0,0,0,.22); transform:translateY(-1px); }
+
+/* [대형8] 인게임은 완전히 보드 우선 — 나머지는 전부 보조 */
+body.ingame .statstrip, body.ingame .play-switch{ display:none !important; }
+body.ingame .cols{ padding:10px 10px 92px; }
+body.ingame .game-hud{ gap:6px; }
+
+/* [대형4] 인게임 컨트롤은 엄지 닿는 하단 고정 바 */
+@media (max-width: 900px){
+  body.ingame .controls{ position:fixed; left:0; right:0; bottom:0; z-index:70; margin:0;
+    display:flex; justify-content:space-around; gap:0; padding:8px 6px calc(8px + env(safe-area-inset-bottom));
+    background:color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter:blur(12px);
+    border-top:1px solid var(--line2); }
+  body.ingame .controls .ghost{ flex:1; min-height:48px !important; border:0 !important; background:transparent !important;
+    border-radius:10px !important; font-size:12px !important; padding:6px 2px !important; }
+  body.ingame .controls .ghost:active{ background:var(--elevated) !important; }
+  body.ingame .ogchat{ bottom:64px; }
+}
+
+/* [대형9] 기보 = 스크럽 가능한 타임라인 */
+.movenav{ width:var(--board); max-width:96vw; align-items:center; gap:6px;
+  background:var(--panel2); border:1px solid var(--line); border-radius:var(--r-pill); padding:4px 6px; }
+.movestrip{ scroll-behavior:smooth; }
+.movestrip .mv{ scroll-snap-align:center; }
+.movestrip{ scroll-snap-type:x proximity; }
+.movestrip .mv.active{ background:var(--accent); color:#fff; border-radius:var(--r-pill); }
+
+/* [대형7] 결과는 카드가 아니라 화면을 접수하는 시트 */
+.result-box{ width:min(460px, 94vw); }
+@media (max-width: 560px){
+  #resultOverlay .result-box{ position:fixed; left:0; right:0; bottom:0; width:100%; max-width:none;
+    border-radius:20px 20px 0 0; padding-bottom:calc(18px + env(safe-area-inset-bottom));
+    animation:sheetUp .28s cubic-bezier(.2,.8,.3,1) both; }
+  @keyframes sheetUp{ from{ transform:translateY(100%) } to{ transform:none } }
+  #resultOverlay .result-actions{ flex-direction:column; }
+  #resultOverlay .result-actions button{ width:100%; min-height:48px; }
+}

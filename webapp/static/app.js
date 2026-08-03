@@ -3860,6 +3860,10 @@ function renderPbars() {
   };
   bar(top, theirs, OG.opponent || t("og_opp"), OG.oppRating, false);
   bar(bottom, mine, ogName(), myRating(), true);
+  // [대형6] whose turn it is should be readable from the bars alone
+  const myTurn = OG.state && OG.state.turn === OG.color;
+  if (top) top.classList.toggle("turn-on", !!(OG.started && !OG.over && !myTurn));
+  if (bottom) bottom.classList.toggle("turn-on", !!(OG.started && !OG.over && myTurn));
 }
 setInterval(() => { if (OG.started) renderPbars(); }, 250);
 
@@ -3927,6 +3931,40 @@ function ogPresence() {
   if (OG.started) return;
   ogConnect(() => ogSend({ type: "hello", token: ogToken() }));
 }
+
+// =========================================================================== //
+// [대형1] MATCHMAKING LOBBY — searching is a full screen state, not a caption
+// =========================================================================== //
+const LOBBY = { t0: 0, timer: null };
+function lobbyOpen() {
+  const el = $("ogLobby"); if (!el) return;
+  el.classList.remove("hidden");
+  document.body.classList.add("lobby-on");
+  const av = $("lobbyAva"); if (av) av.textContent = (ogName() || "?").charAt(0).toUpperCase();
+  const r = myRating();
+  const range = $("lobbyRange");
+  if (range) range.textContent = t("lobby_range").replace("{a}", Math.max(0, r - 200)).replace("{b}", r + 200);
+  LOBBY.t0 = Date.now();
+  if (LOBBY.timer) clearInterval(LOBBY.timer);
+  LOBBY.timer = setInterval(() => {
+    const secs = Math.round((Date.now() - LOBBY.t0) / 1000);
+    const e = $("lobbyElapsed"); if (e) e.textContent = secs + t("lobby_sec");
+    const sub = $("lobbySub");
+    if (sub) sub.textContent = secs < 12 ? t("lobby_sub1") : t("lobby_sub2");
+  }, 1000);
+}
+function lobbyClose() {
+  const el = $("ogLobby"); if (el) el.classList.add("hidden");
+  document.body.classList.remove("lobby-on");
+  if (LOBBY.timer) { clearInterval(LOBBY.timer); LOBBY.timer = null; }
+}
+if ($("lobbyCancel")) $("lobbyCancel").onclick = () => { ogSend({ type: "cancel" }); lobbyClose(); };
+if ($("lobbyAi")) $("lobbyAi").onclick = () => { ogSend({ type: "cancel" }); lobbyClose(); const b = $("ogFallbackBtn"); if (b) b.click(); };
+// [대형3] mode tiles route to the existing flows
+if ($("ogCreate2")) $("ogCreate2").onclick = () => { const b = $("ogCreate"); if (b) b.click(); };
+if ($("ogCorrTile")) $("ogCorrTile").onclick = () => { const el = $("corrList"); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); };
+if ($("ogCrossTile")) $("ogCrossTile").onclick = () => { const el = $("cxOnlineBtn3"); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); };
+
 function ogName() { return ($("ogName").value || t("og_player")).trim().slice(0, 20) || t("og_player"); }
 // auth token → the server resolves it to the account and owns the rating.
 function ogToken() { return (typeof AUTH !== "undefined" && AUTH && AUTH.token) || ""; }
@@ -4010,6 +4048,7 @@ function ogFresh(then) {
 function ogHandle(msg) {
   switch (msg.type) {
     case "waiting":
+      lobbyOpen();                       // [대형1]
       setStatus("ogSetupStatus", t("og_searching"));
       $("ogCancel").classList.remove("hidden");
       ogArmFallback();          // if nobody shows up in ~15s, offer "play AI now"
@@ -4021,12 +4060,14 @@ function ogHandle(msg) {
       $("ogCancel").classList.remove("hidden");
       break;
     case "cancelled":
+      lobbyClose();                      // [대형1]
       ogClearFallback();
       setStatus("ogSetupStatus", t("og_cancelled"));
       $("ogCancel").classList.add("hidden");
       $("ogCodeBox").classList.add("hidden");
       break;
     case "start":
+      lobbyClose();                      // [대형1]
       ogClearFallback();
       OG.started = true; OG.over = false; OG.ratingApplied = false;
       OG.gid = msg.gid || null; OG.reconnecting = false; OG.reconnectDeadline = null;
