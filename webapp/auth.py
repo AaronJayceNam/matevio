@@ -281,6 +281,15 @@ def _init_db() -> None:
             except (ValueError, TypeError, json.JSONDecodeError):
                 seed = RATING_START
             cur.execute(f"UPDATE users SET rating = {_ph()} WHERE id = {_ph()}", (seed, uid))
+        # separate rating for the 3/4-player Cross modes — mixing multi-player
+        # results into the 1v1 Elo would distort it, so they get their own column.
+        if _IS_PG:
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS cross_rating INTEGER")
+        else:
+            have = [r[1] for r in cur.execute("PRAGMA table_info(users)").fetchall()]
+            if "cross_rating" not in have:
+                cur.execute("ALTER TABLE users ADD COLUMN cross_rating INTEGER")
+        cur.execute(f"UPDATE users SET cross_rating = {_ph()} WHERE cross_rating IS NULL", (RATING_START,))
         # server-owned puzzle stats — the puzzle/streak leaderboards read THESE, not
         # the client-owned progress blob (which was trivially forgeable). Updated
         # monotonically + rate-limited on save; seeded once from the existing blob.
@@ -356,6 +365,53 @@ def apply_online_result(uid_w: str, uid_b: str, result: str):
         return None
     return {"white": {"before": rw, "after": nw, "delta": nw - rw},
             "black": {"before": rb, "after": nb, "delta": nb - rb}}
+
+
+# ---- Cross (3/4-player) rating: its own column, its own simple formula -------- #
+def cross_rating_for_token(token: str):
+    """(uid, cross_rating) for a valid token, else None. Used when a Cross online
+    game starts so the server — not the client — owns identity and rating."""
+    if not token:
+        return None
+    try:
+        with _connect() as con:
+            uid = _user_for_token(con, token)
+            if uid is None:
+                return None
+            cur = con.cursor()
+            cur.execute(f"SELECT cross_rating FROM users WHERE id = {_ph()}", (uid,))
+            row = cur.fetchone()
+            return uid, (max(0, int(row[0])) if row and row[0] is not None else RATING_START)
+    except Exception:
+        return None
+
+
+def apply_cross_result(uids: list, winner_uid):
+    """Winner-take-all rating for an N-player Cross game: the winner gains K, the
+    others each lose K/(n-1) (floored at 0). Returns {uid: {before,after,delta}}.
+    Guests (None) and duplicate accounts are ignored so one person can't farm."""
+    real = [u for u in uids if u]
+    if len(set(real)) < 2 or winner_uid not in real:
+        return None
+    K = 24
+    n = len(real)
+    loss = max(1, round(K / max(1, n - 1)))
+    out = {}
+    try:
+        with _connect() as con:
+            cur = con.cursor()
+            for u in set(real):
+                cur.execute(f"SELECT cross_rating FROM users WHERE id = {_ph()}", (u,))
+                row = cur.fetchone()
+                before = max(0, int(row[0])) if row and row[0] is not None else RATING_START
+                delta = K if u == winner_uid else -loss
+                after = max(0, before + delta)
+                cur.execute(f"UPDATE users SET cross_rating = {_ph()} WHERE id = {_ph()}", (after, u))
+                out[u] = {"before": before, "after": after, "delta": after - before}
+            con.commit()
+    except Exception:
+        return None
+    return out
 
 
 # ---- FIX5: online-game snapshots (resume after a server restart) ---------------

@@ -754,7 +754,11 @@ register_corr(app)
 from webapp.cross import register_cross  # noqa: E402
 register_cross(app)
 from webapp.cross_online import register_cross_online  # noqa: E402
-register_cross_online(app)
+try:    # accounts + per-mode rating for the Cross modes (guests still allowed)
+    from webapp.auth import cross_rating_for_token as _cx_resolve, apply_cross_result as _cx_apply
+    register_cross_online(app, {"resolve": _cx_resolve, "apply": _cx_apply})
+except Exception:
+    register_cross_online(app)
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 

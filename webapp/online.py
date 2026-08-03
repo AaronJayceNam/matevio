@@ -142,6 +142,9 @@ class Lobby:
         # F8: after a game ends, each still-connected socket -> its rematch record
         # {partner, self_t:(ws,name,rating,uid), want:bool}. Both wanting -> new game.
         self.rematch: dict[WebSocket, dict] = {}
+        # F7: uid -> socket, so a friend challenge can be delivered IN-APP instead of
+        # forcing the challenger to copy an invite code out to another messenger.
+        self.online_uid: dict[str, WebSocket] = {}
 
     # ------------------------------------------------------------------ #
     def _state(self, game: Game) -> dict:
@@ -338,6 +341,33 @@ class Lobby:
                 return await _send(ws, {"type": "error", "message": "자기 자신과는 대국할 수 없습니다."})
             self._drop_from_lobby(ws)
             await self._start_game(owner, (ws, name, rating, uid))
+
+    async def hello(self, ws: WebSocket, uid: str | None) -> None:
+        """F7: register this socket under its account so friends can reach it."""
+        if uid is None:
+            return
+        async with self.lock:
+            self.online_uid[uid] = ws
+        await _send(ws, {"type": "hello_ok"})
+
+    async def challenge(self, ws: WebSocket, from_uid: str | None, from_name: str,
+                        rating: int, to_uid: str) -> None:
+        """F7: create an invite room and push it straight to the friend's app."""
+        to_uid = (to_uid or "").strip().lower()
+        if not from_uid or not to_uid or to_uid == from_uid:
+            return await _send(ws, {"type": "error", "message": "도전할 수 없는 상대입니다."})
+        async with self.lock:
+            target = self.online_uid.get(to_uid)
+            if target is None:
+                return await _send(ws, {"type": "challenge_offline", "id": to_uid})
+            if ws in self.games:
+                return await _send(ws, {"type": "error", "message": "이미 대국 중입니다."})
+            self._drop_from_lobby(ws)
+            code = _new_code(self.rooms)
+            self.rooms[code] = (ws, from_name, rating, from_uid)
+        await _send(ws, {"type": "challenge_sent", "id": to_uid, "code": code})
+        await _send(target, {"type": "challenged", "from": from_uid, "name": from_name,
+                             "rating": rating, "code": code})
 
     async def cancel(self, ws: WebSocket) -> None:
         async with self.lock:
@@ -552,6 +582,8 @@ class Lobby:
         async with self.lock:
             self._drop_from_lobby(ws)
             self.rematch.pop(ws, None)         # F8: drop any pending rematch offer
+            for k in [u for u, w in self.online_uid.items() if w is ws]:
+                self.online_uid.pop(k, None)   # F7: no longer reachable for challenges
             g = self.games.get(ws)
             if g is None:
                 return
@@ -678,7 +710,7 @@ def register_online(app: FastAPI, legal_state, rating_hooks: dict | None = None)
                 except (TypeError, ValueError):
                     rating = 400
                 uid = None
-                if t in ("quick", "create", "join") and lobby._resolve:
+                if t in ("quick", "create", "join", "hello", "challenge") and lobby._resolve:
                     resolved = lobby._resolve(str(msg.get("token") or ""))
                     if resolved is not None:
                         uid, rating = resolved
@@ -694,6 +726,10 @@ def register_online(app: FastAPI, legal_state, rating_hooks: dict | None = None)
                     await lobby.resume(ws, str(msg.get("gid") or ""), str(msg.get("token") or ""),
                                        str(msg.get("color") or "") or None,
                                        str(msg.get("rkey") or "") or None)
+                elif t == "hello":
+                    await lobby.hello(ws, uid)
+                elif t == "challenge":
+                    await lobby.challenge(ws, uid, name, rating, str(msg.get("to") or ""))
                 elif t == "cancel":
                     await lobby.cancel(ws)
                 elif t == "move":

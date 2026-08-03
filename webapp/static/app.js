@@ -2423,7 +2423,8 @@ function rand() { return (typeof Math !== "undefined" && Math.random) ? Math.ran
 // CROSS — plus-shaped 3/4-player chess (upright squares; the readable board)
 // =========================================================================== #
 const CX = { board: null, turn: 0, active: [], n: 4, moves: [], over: false, winner: null,
-  sel: null, last: null, busy: false, online: false, myseat: null, names: null, ws: null, ai: null, aiTimer: null };
+  sel: null, last: null, busy: false, online: false, myseat: null, names: null, ws: null, ai: null, aiTimer: null,
+  gid: null, rkey: null, watching: false, reconnectUntil: null, reconnecting: false };
 const CX_N = 14, CX_U = 34;                       // 14x14 grid, 34px cells
 const CX_FILL = ["#f4f5f7", "#e0544c", "#20242c", "#3f7fd0"];   // seat 0..3 armies
 const CX_STROKE = ["#2a2f38", "#ffd9d5", "#c9d2df", "#dcebff"];
@@ -2452,6 +2453,7 @@ function cxTeardown() {
   if (CX.aiTimer) { clearTimeout(CX.aiTimer); CX.aiTimer = null; }   // stop a pending bot move
   if (CX.ws) { try { CX.ws.close(); } catch (e) {} CX.ws = null; }
   CX.online = false; CX.myseat = null; CX.ai = null; CX.names = null;
+  CX.gid = null; CX.rkey = null; CX.watching = false; CX.reconnectUntil = null; CX.reconnecting = false;
 }
 function cxClose() { closeModal("cxGame"); }
 onModalClose("cxGame", cxTeardown);   // D5: teardown runs on any close path
@@ -2475,20 +2477,54 @@ async function cxStartVsAI(n) {                     // human = first active seat
 }
 function cxOnlineOpen(n) {
   const m = document.getElementById("cxGame"); if (m) m.classList.remove("hidden");
+  Object.assign(CX, { online: true, myseat: null, ai: null, board: null, over: false, winner: null,
+    sel: null, last: null, busy: false, names: null, n, gid: null, rkey: null, watching: false,
+    reconnectUntil: null, reconnecting: false });
+  cxConnect(() => cxSend({ type: "quick", n: CX.n, name: (AUTH && AUTH.id) || "플레이어", token: (AUTH && AUTH.token) || "" }));
+  if (typeof metric === "function") metric("cross_online_" + n);
+}
+function cxSend(payload) {
+  if (CX.ws && CX.ws.readyState === WebSocket.OPEN) { try { CX.ws.send(JSON.stringify(payload)); } catch (e) {} }
+}
+// Opens a socket and runs `then` once connected. On an unexpected close mid-game
+// we try to reclaim the seat with {gid, rkey} instead of losing the game (F3).
+function cxConnect(then) {
   const T = (typeof t === "function") ? t : ((k) => k);
-  Object.assign(CX, { online: true, myseat: null, ai: null, board: null, over: false, winner: null, sel: null, last: null, busy: false, names: null, n });
   cxSetStatus(T("tri_connecting"));
   let ws; try { ws = new WebSocket(wsBase() + "/wsc"); }
   catch (e) { cxSetStatus(T("tri_conn_fail")); return; }
   CX.ws = ws;
-  ws.onopen = () => { try { ws.send(JSON.stringify({ type: "quick", n: CX.n, name: (AUTH && AUTH.id) || "플레이어" })); } catch (e) {} };
+  ws.onopen = () => { CX.reconnecting = false; if (then) then(); };
   ws.onmessage = (ev) => { let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; } cxOnMsg(msg); };
   ws.onclose = () => {
-    if (CX.ws === ws) CX.ws = null;          // so later cxMove sends fail fast, not into a dead socket
-    if (CX.online && !CX.over) { CX.busy = false; cxSetStatus(T("tri_conn_fail")); }
+    if (CX.ws === ws) CX.ws = null;
+    if (!CX.online || CX.over) return;
+    CX.busy = false;
+    if (CX.gid && CX.rkey && !CX.watching) cxTryReconnect();   // seat is held for ~60s
+    else cxSetStatus(T("tri_conn_fail"));
   };
-  if (typeof metric === "function") metric("cross_online_" + n);
 }
+function cxTryReconnect() {
+  const T = (typeof t === "function") ? t : ((k) => k);
+  if (CX.over || !CX.gid || !CX.rkey) return;
+  if (!CX.reconnectUntil) CX.reconnectUntil = Date.now() + 60000;
+  if (Date.now() >= CX.reconnectUntil) {           // grace elapsed — seat is gone
+    CX.reconnectUntil = null; CX.reconnecting = false;
+    cxSetStatus("⚠️ " + T("tri_aborted"));
+    return;
+  }
+  CX.reconnecting = true;
+  cxSetStatus("🔄 " + T("cx_reconnecting"));
+  cxConnect(() => cxSend({ type: "resume", gid: CX.gid, rkey: CX.rkey }));
+}
+// F9: spectate — attach read-only to a live game by id
+function cxWatch(gid) {
+  const m = document.getElementById("cxGame"); if (m) m.classList.remove("hidden");
+  Object.assign(CX, { online: true, watching: true, myseat: null, ai: null, board: null, over: false,
+    winner: null, sel: null, last: null, busy: false, names: null, gid, rkey: null });
+  cxConnect(() => cxSend({ type: "watch", gid }));
+}
+function cxListGames() { cxConnect(() => cxSend({ type: "games" })); }
 function cxSetStatus(html) { const el = document.getElementById("cxInfo"); if (el) el.innerHTML = html; }
 function cxApplyState(st, last) {
   Object.assign(CX, { board: st.board, turn: st.turn, active: st.active || CX.active, n: st.n || CX.n, moves: st.moves || [], over: !!st.over, winner: st.winner, last: last || null, sel: null, busy: false });
@@ -2496,15 +2532,47 @@ function cxApplyState(st, last) {
 }
 function cxOnMsg(msg) {
   const T = (typeof t === "function") ? t : ((k) => k);
+  const setNames = (m) => { CX.names = null; if (m.names && m.active) { CX.names = {}; m.active.forEach((sid, i) => { CX.names[sid] = m.names[i]; }); } };
   if (msg.type === "waiting") cxSetStatus("⏳ " + T("tri_waiting").replace("{have}", msg.have || 1).replace("{need}", msg.need || CX.n));
-  else if (msg.type === "start") { CX.myseat = msg.seat; CX.names = null; if (msg.names) { CX.names = {}; msg.active.forEach((sid, i) => { CX.names[sid] = msg.names[i]; }); } cxApplyState(msg.state); }
-  else if (msg.type === "state") cxApplyState(msg.state, msg.last);
-  else if (msg.type === "end") { cxApplyState(msg.state); CX.over = true; CX.winner = msg.winner; cxRender(); }
-  else if (msg.type === "aborted") { CX.over = true; cxSetStatus("⚠️ " + T("tri_aborted")); }
+  else if (msg.type === "start" || msg.type === "resume_ok") {
+    CX.myseat = msg.seat; CX.gid = msg.gid || CX.gid; CX.rkey = msg.rkey || CX.rkey;
+    CX.reconnectUntil = null; CX.reconnecting = false; CX.watching = false;
+    setNames(msg); cxApplyState(msg.state);
+    if (msg.type === "resume_ok") cxSetStatus("✅ " + T("cx_resumed"));
+  } else if (msg.type === "watching") {           // F9: spectator view
+    CX.watching = true; CX.myseat = null; CX.gid = msg.gid || CX.gid;
+    setNames(msg); cxApplyState(msg.state);
+  } else if (msg.type === "state") cxApplyState(msg.state, msg.last);
+  else if (msg.type === "end") {
+    cxApplyState(msg.state); CX.over = true; CX.winner = msg.winner; cxRender();
+    if (msg.rating && typeof msg.rating.after === "number") {   // F6: Cross rating
+      const d = msg.rating.delta;
+      cxSetStatus(document.getElementById("cxInfo").innerHTML + ' · <b>' +
+        T("cx_rating") + " " + (d >= 0 ? "+" + d : d) + " → " + msg.rating.after + "</b>");
+    }
+  } else if (msg.type === "paused") {             // F3: someone dropped, game held
+    CX.busy = true;
+    cxSetStatus("⏸️ " + T("cx_paused").replace("{s}", msg.seconds || 60));
+  } else if (msg.type === "resumed") { CX.busy = false; cxSetStatus("▶️ " + T("cx_opp_back")); cxRender(); }
+  else if (msg.type === "resume_fail") {
+    if (CX.reconnecting && CX.reconnectUntil && Date.now() < CX.reconnectUntil) setTimeout(cxTryReconnect, 2500);
+    else { CX.over = true; cxSetStatus("⚠️ " + T("tri_aborted")); }
+  } else if (msg.type === "games") { cxRenderGameList(msg.games || []); }
+  else if (msg.type === "aborted") { CX.over = true; CX.reconnectUntil = null; cxSetStatus("⚠️ " + T("tri_aborted")); }
   else if (msg.type === "error") { CX.busy = false; cxRender(); }
 }
+// F9: simple spectate picker rendered into the info bar
+function cxRenderGameList(games) {
+  const T = (typeof t === "function") ? t : ((k) => k);
+  if (!games.length) { cxSetStatus(T("cx_no_games")); return; }
+  cxSetStatus(T("cx_pick_game") + " " + games.map((g) =>
+    '<button class="ghost cx-watch-btn" data-gid="' + g.gid + '">' +
+    escapeHtml((g.names || []).join(" vs ")) + " (" + g.n + "인)</button>").join(" "));
+  const el = document.getElementById("cxInfo");
+  if (el) el.querySelectorAll(".cx-watch-btn").forEach((b) => { b.onclick = () => cxWatch(b.dataset.gid); });
+}
 function cxCanControl() {
-  if (CX.over || CX.busy) return false;
+  if (CX.over || CX.busy || CX.watching) return false;   // spectators are read-only
   if (CX.online) return CX.myseat != null && CX.turn === CX.myseat;
   if (CX.ai) return CX.ai.indexOf(CX.turn) < 0;    // human controls non-AI seats
   return true;                                     // hotseat
@@ -3509,6 +3577,7 @@ if ($("cxOnlineBtn4")) $("cxOnlineBtn4").onclick = () => cxOnlineOpen(4);
 if ($("cxNew3Btn")) $("cxNew3Btn").onclick = () => cxRestart(3);
 if ($("cxNew4Btn")) $("cxNew4Btn").onclick = () => cxRestart(4);
 if ($("cxCloseBtn")) $("cxCloseBtn").onclick = () => cxClose();
+if ($("cxWatchBtn")) $("cxWatchBtn").onclick = () => { const m = $("cxGame"); if (m) m.classList.remove("hidden"); Object.assign(CX, { online: true, watching: true, board: null, over: false }); cxListGames(); };
 if ($("opSaveBtn")) $("opSaveBtn").onclick = () => repSaveCurrentOpening();   // FEAT4
 $("pzPrev").onclick = () => loadPuzzle(PZ.idx - 1);
 $("pzNext").onclick = () => loadPuzzle(PZ.idx + 1);
@@ -3832,6 +3901,14 @@ function ogTryReconnect() {
   ws.onerror = () => {};
 }
 
+// F7: keep a light socket open while logged in so friends' challenges can reach
+// this app instantly. Only connects when signed in and not already connected.
+function ogPresence() {
+  if (!(typeof AUTH !== "undefined" && AUTH && AUTH.token)) return;
+  if (OG.ws && OG.ws.readyState === WebSocket.OPEN) { ogSend({ type: "hello", token: ogToken() }); return; }
+  if (OG.started) return;
+  ogConnect(() => ogSend({ type: "hello", token: ogToken() }));
+}
 function ogName() { return ($("ogName").value || t("og_player")).trim().slice(0, 20) || t("og_player"); }
 // auth token → the server resolves it to the account and owns the rating.
 function ogToken() { return (typeof AUTH !== "undefined" && AUTH && AUTH.token) || ""; }
@@ -3982,6 +4059,27 @@ function ogHandle(msg) {
     case "opp_reconnected":
       setStatus("ogStatus", t("og_opp_reconnected"));
       break;
+    // ---- F7: in-app friend challenges ----
+    case "challenge_sent":
+      $("ogCodeBox").classList.remove("hidden");
+      $("ogCode").textContent = msg.code || "";
+      $("ogCancel").classList.remove("hidden");
+      setStatus("ogSetupStatus", t("fr_challenge_sent").replace("{id}", msg.id || ""));
+      break;
+    case "challenge_offline":
+      setStatus("ogSetupStatus", t("fr_challenge_offline").replace("{id}", msg.id || ""), true);
+      break;
+    case "challenged": {           // a friend wants to play — accept in one tap
+      const code = msg.code || "";
+      switchTab("online");
+      presentResult({ kind: "draw", icon: "⚔️", title: t("fr_challenged_t"),
+        sub: t("fr_challenged").replace("{id}", msg.name || msg.from || ""),
+        actions: [
+          { label: t("fr_accept"), primary: true, onClick: () => {
+              ogFresh(() => ogSend({ type: "join", code, name: ogName(), rating: myRating(), token: ogToken() })); } },
+          { label: t("og_decline"), onClick: () => {} }] });
+      break;
+    }
     // NOTE: F8 rematch UI is held back — the server route is implemented + hardened,
     // but a production-only issue kept the offer from being delivered reliably in
     // testing, so the entry point is disabled to avoid a broken button.
@@ -4262,6 +4360,7 @@ function updateOgAuthGate() {
   // localized name (bug fix: the input had a hardcoded Korean "플레이어" so the
   // t("og_player") fallback was dead for EN/JA/ZH/ES guests)
   if ($("ogName")) $("ogName").value = on ? (AUTH.id || t("og_player")) : t("og_player");
+  if (on && typeof ogPresence === "function") setTimeout(ogPresence, 300);   // F7: reachable for challenges
 }
 $("ogLoginBtn").onclick = openAuth;
 function requireLogin() {
@@ -6004,13 +6103,13 @@ async function frRemove(id) {
 }
 // Challenge / rematch: create an invite room, then tell the user to send the
 // code (shown in #ogCodeBox) to that friend.
+// F7: challenge a friend IN-APP. The server routes the invite straight to their
+// open app (if online); we fall back to the old copy-a-code flow when they aren't.
 function frChallenge(id) {
   if (!requireLogin()) return;
-  const btn = $("ogCreate");
-  if (btn) btn.click();                     // create a room → code appears in #ogCodeBox
-  setStatus("ogSetupStatus", t("fr_challenge_sent").replace("{id}", id), false);
-  const board = document.getElementById("tab-online");
-  if (board) board.scrollIntoView({ behavior: "smooth", block: "start" });
+  switchTab("online");
+  ogFresh(() => ogSend({ type: "challenge", to: id, name: ogName(), rating: myRating(), token: ogToken() }));
+  setStatus("ogSetupStatus", t("fr_challenge_sending").replace("{id}", id));
 }
 if ($("frAddBtn")) $("frAddBtn").onclick = frAdd;
 if ($("frAddInput")) $("frAddInput").addEventListener("keydown", (e) => { if (e.key === "Enter") frAdd(); });
