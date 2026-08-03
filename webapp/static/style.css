@@ -415,7 +415,7 @@ input[type=range]{ accent-color:var(--accent); }
   animation:pop .35s cubic-bezier(.2,1.2,.3,1); }
 @keyframes pop{ from{ transform:scale(.8); opacity:0; } to{ transform:scale(1); opacity:1; } }
 .result-box.win{ border-color:rgba(226,160,16,.55); box-shadow:0 0 0 1px rgba(226,160,16,.25), 0 30px 70px -18px rgba(16,24,40,.6); }
-.result-box.loss{ border-color:rgba(224,72,63,.4); }
+.result-box.loss{ border-color:rgba(224,72,63,.4); animation:resultShake .42s cubic-bezier(.36,.07,.19,.97) both; }
 .result-icon{ font-size:84px; line-height:1; margin-bottom:6px; filter:drop-shadow(0 8px 18px rgba(0,0,0,.4)); animation:bounceIn .5s; }
 @keyframes bounceIn{ 0%{transform:scale(.3);opacity:0;} 60%{transform:scale(1.15);} 100%{transform:scale(1);opacity:1;} }
 .result-title{ font-size:30px; font-weight:900; letter-spacing:.5px; margin:2px 0 6px; }
@@ -456,7 +456,7 @@ input[type=range]{ accent-color:var(--accent); }
 .og-draw .row{ display:flex; gap:8px; margin-top:9px; } .og-draw .row button{ flex:1; }
 
 /* player bars */
-.pbar{ display:flex; align-items:center; gap:10px; width:var(--board);
+.pbar{ display:flex; align-items:center; gap:10px; width:var(--board); overflow:hidden;
   background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:8px 12px; margin:8px 0; box-shadow:var(--shadow-sm); }
 .pv-ava{ display:inline-grid; place-items:center; width:30px; height:30px; border-radius:9px;
   background:var(--elevated); color:var(--ink); font-weight:800; font-size:14px; flex:0 0 auto; }
@@ -687,7 +687,7 @@ body.ingame{ padding-bottom:0 !important; }
   background:var(--elevated); border:1px solid var(--line); white-space:nowrap; flex:0 0 auto; }
 .pv-rating .tier{ margin-right:2px; }
 .pv-turn{ margin-left:auto; width:12px; height:12px; border-radius:50%; background:var(--line2); flex:0 0 auto; }
-.pv-turn.active{ background:var(--accent); box-shadow:0 0 0 4px rgba(63,157,99,.20); }
+.pv-turn.active{ background:var(--accent); box-shadow:0 0 0 4px rgba(63,157,99,.20); animation:myturnPulse 2.2s ease-out infinite; }
 
 /* app-shell: keep browse screens from sprawling on wide monitors */
 .tab{ max-width:1120px; margin-left:auto; margin-right:auto; }
@@ -996,7 +996,8 @@ body.ingame .resultgate{ bottom:24px; }
 body.ingame .movenav{
   display:flex; align-items:center; gap:6px; width:var(--board); max-width:96vw; margin:8px auto 0;
 }
-.msnav{ flex:0 0 auto; padding:7px 11px !important; font-size:13px !important; }
+.msnav{ flex:0 0 auto; padding:7px 11px !important; font-size:13px !important; min-height:40px; min-width:40px; opacity:.75; }
+.msnav:hover:not(:disabled){ opacity:1; }
 .msnav:disabled{ opacity:.35; cursor:default; }
 .movestrip{
   flex:1; min-width:0; display:flex; gap:5px; align-items:center; overflow-x:auto; white-space:nowrap;
@@ -1148,7 +1149,7 @@ button.primary:active{ transform:translateY(1px) !important; box-shadow:none !im
 
 /* in-game controls: tighter, icon-forward row hugging the board */
 .cols > div:first-child > .controls{ margin-top:10px !important; gap:6px !important; }
-.cols > div:first-child > .controls .ghost{ padding:8px 14px !important; font-size:13px !important; }
+.cols > div:first-child > .controls .ghost{ padding:8px 14px !important; font-size:13px !important; min-height:44px !important; }
 
 /* the board column gets the turn line right under the board, controls under that */
 .cols > div:first-child > .turn{ margin:10px 0 2px !important; }
@@ -1513,10 +1514,10 @@ body.storm-on .controls{ display:none !important; }
 /* MODE4: Piece Odds */
 .odds-h{ font-size:var(--fs-sm); font-weight:800; color:var(--muted); margin:12px 0 8px; }
 .odds-row{ display:flex; gap:6px; flex-wrap:wrap; }
-.odds-btn{ flex:1 1 auto; min-width:56px; padding:9px 8px; border:1px solid var(--line2); border-radius:var(--r-sm);
+.odds-btn{ flex:1 1 auto; min-width:56px; min-height:44px; padding:9px 8px; border:1px solid var(--line2); border-radius:var(--r-sm);
   background:var(--panel); color:var(--ink); font-weight:700; font-size:12.5px; cursor:pointer; min-height:40px; transition:.15s; }
 .odds-btn:hover{ border-color:var(--accent); }
-.odds-btn.hard{ flex-basis:100%; border-color:rgba(239,90,82,.4); color:#e88; }
+.odds-btn.hard{ border-color:rgba(239,90,82,.4); color:#e88; }
 /* MODE6: Boss Gauntlet */
 .boss-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; max-height:56vh; overflow-y:auto; }
 .boss-cell{ display:flex; flex-direction:column; align-items:center; gap:3px; padding:12px 8px; border-radius:var(--r-md);
@@ -1702,3 +1703,67 @@ body.ingame .play-switch{ display:none; }
 .og-fallback .ogfb-note:empty{ display:none; }
 .og-fallback #ogFallbackBtn{ flex:0 0 auto; border:none; border-radius:10px; padding:9px 15px;
   font-weight:800; cursor:pointer; }
+
+
+/* ---- play-screen design pass (council items) ---- */
+/* [8] check flag uses the palette's danger token, not a one-off hex */
+.chk-flag{ color:var(--bad); font-weight:800; }
+/* [15] check is also a SHAPE, not only a red glow (red/green is the worst
+   colour-blind pair, and our dark squares are green) */
+.sq.check{ position:relative; }
+.sq.check::after{ content:""; position:absolute; inset:8%; border-radius:50%;
+  border:3px solid var(--bad); pointer-events:none; animation:checkPulse .5s ease-out 3; }
+@keyframes checkPulse { 0%{ transform:scale(.82); opacity:.35 } 60%{ transform:scale(1); opacity:1 } 100%{ transform:scale(1); opacity:.9 } }
+/* [16] clock urgency has a second, sharper stage instead of one 60s cliff */
+.pv-clock.active.critical{ background:linear-gradient(180deg,#ff5147,#a81410); box-shadow:0 2px 0 #7a1210;
+  animation:clockCritical .6s ease-in-out infinite; }
+@keyframes clockCritical { 0%,100%{ transform:scale(1) } 50%{ transform:scale(1.07) } }
+/* [10] the self-handicap group reads as a distinct, riskier zone */
+.odds-group-hard{ margin-top:var(--space-4); padding:var(--space-2); border-radius:var(--r-sm);
+  background:rgba(239,90,82,.07); border:1px solid rgba(239,90,82,.22); }
+/* [28] one shared width for both side columns (was 430px vs 420px inline) */
+.side-col{ flex:1; min-width:300px; max-width:430px; }
+/* [19] opponent avatars get their own colour instead of a grey placeholder */
+.pv-ava.tinted{ color:#fff; font-weight:800; }
+/* [30] loss entrance */
+@keyframes resultShake { 10%,90%{ transform:translateX(-1px) } 20%,80%{ transform:translateX(2px) }
+  30%,50%,70%{ transform:translateX(-3px) } 40%,60%{ transform:translateX(3px) } 100%{ transform:none } }
+@media (prefers-reduced-motion: reduce){
+  .result-box.loss, .pv-turn.active, .pv-clock.active.critical, .sq.check::after{ animation:none !important; }
+}
+/* [22] on phones the chat docks to the bottom instead of pushing the board up */
+@media (max-width: 560px){
+  .ogchat{ position:fixed; left:0; right:0; bottom:0; width:100%; z-index:60; max-height:52vh;
+    border-radius:14px 14px 0 0; padding-bottom:calc(8px + env(safe-area-inset-bottom)); }
+  .ogchat-log{ max-height:34vh; overflow-y:auto; }
+}
+/* [23] landscape phones: board beside the controls, and dvh so the URL bar
+   resizing doesn't jump the layout */
+@supports (height: 100dvh){
+  body.ingame .cols{ min-height:100dvh; }
+}
+@media (max-height: 520px) and (orientation: landscape){
+  body.ingame .cols{ flex-direction:row; align-items:flex-start; gap:10px; min-height:auto; }
+  body.ingame .boardwrap{ flex:0 0 auto; }
+  .cboard{ width:min(88vh, 92vw); }
+  body.ingame .cols > div:first-child{ display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start; }
+}
+
+/* [3] rating is context, not the headline */
+.ogr-compact{ margin-top:var(--space-3); }
+.ogr-compact .ogr-main{ display:flex; align-items:baseline; gap:8px; }
+.ogr-compact #ogRating{ font-size:20px; }
+/* [9][21] small status badges */
+.pill-badge{ display:inline-block; padding:2px 8px; border-radius:var(--r-pill); font-size:11px;
+  font-weight:800; background:var(--elevated); color:var(--muted); border:1px solid var(--line2); vertical-align:middle; }
+.pill-badge.beta{ background:rgba(233,178,58,.14); color:var(--c-gold-hi,#e9b23a); border-color:rgba(233,178,58,.35); }
+/* [21] special modes collapse; the 3 cross variants share one compact row */
+.ai-modes-wrap{ margin-top:var(--space-3); border-top:1px solid var(--line); padding-top:var(--space-2); }
+.ai-modes-wrap > summary{ cursor:pointer; list-style:none; padding:6px 0; }
+.ai-modes-wrap > summary::-webkit-details-marker{ display:none; }
+.ai-modes-wrap > summary::after{ content:" ▾"; color:var(--muted); }
+.ai-modes-wrap[open] > summary::after{ content:" ▴"; }
+.cx-modes-h{ margin-top:var(--space-3); font-size:var(--fs-sm); font-weight:800; color:var(--muted); }
+.cx-modes-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+/* [11] narrow phones: two even columns instead of ragged wrapping */
+@media (max-width: 400px){ .odds-row, .cx-modes-row{ display:grid; grid-template-columns:1fr 1fr; } }

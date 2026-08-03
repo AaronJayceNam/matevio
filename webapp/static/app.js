@@ -1697,11 +1697,11 @@ function updateAiTurn() {
   const T = (typeof t === "function") ? t : ((k) => k);
   if (!st || !AIG.started) { el.innerHTML = '<span class="pill"></span>' + T("turn_start"); return; }
   if (AIG.over) { el.innerHTML = "<b>" + T("turn_over") + "</b>"; return; }
-  if (AIG.thinking) { el.innerHTML = '<span class="pill b"></span>' + T("turn_thinking"); return; }
+  if (AIG.thinking) { el.innerHTML = '<span class="pill ' + (AIG.human === "w" ? "b" : "") + '"></span>' + T("turn_thinking"); return; }
   const w = st.turn === "w", mine = st.turn === AIG.human;
   el.innerHTML = `<span class="pill ${w ? "" : "b"}"></span>${w ? T("turn_white") : T("turn_black")}` +
     (mine ? " " + T("turn_you") : " " + T("turn_ai")) +
-    (st.check ? ` · <b style='color:#ff8a80'>${T("turn_check")}</b>` : "");
+    (st.check ? ` · <b class="chk-flag">${T("turn_check")}</b>` : "");
 }
 
 function renderAiMoves() {
@@ -2043,7 +2043,7 @@ function renderAiLevels() {
   const cur = +($("aiLevel").value) || 3;
   const T = (typeof t === "function") ? t : ((k) => k);
   el.innerHTML = AI_LEVEL_PRESETS.map((lv) =>
-    '<button type="button" class="diflevel' + (lv === cur ? " active" : "") + '" data-lv="' + lv + '">' +
+    '<button type="button" class="diflevel' + (lv === cur ? " active" : "") + '" aria-pressed="' + (lv === cur) + '" data-lv="' + lv + '">' +
       '<span class="dif-face">' + aiFace(lv) + "</span>" +
       "<b>" + aiTitle(lv) + "</b><span>" + aiLevelWord() + " " + aiRatingOf(lv) + "</span></button>").join("");
   el.querySelectorAll(".diflevel").forEach((b) => { b.onclick = () => setAiLevel(+b.dataset.lv); });
@@ -2118,6 +2118,9 @@ $("aiUndo").onclick = aiTakeback;
 $("aiHint").onclick = aiHint;
 $("aiResign").onclick = () => {
   if (!AIG.moves.length) { setStatus("aiStatus", t("ai_need_move"), true); return; }
+  confirmAction(t("confirm_resign"), aiDoResign);   // [2] no one-tap resign
+};
+function aiDoResign() {
   AIG.over = true; markGameOver(); renderAiBoard(); updateAiTurn();   // stay full-screen
   const { white, black } = aiPlayerNames();
   const moves = [...AIG.moves], lv = AIG.level;
@@ -2378,6 +2381,12 @@ async function corrRefresh() {
   let r; try { r = await api("/api/corr/list", { token: AUTH.token }); } catch (e) { return; }
   const games = (r && r.games) || [];
   const T = (typeof t === "function") ? t : ((k) => k);
+  const badge = document.getElementById("corrBadge");        // [20] "내 차례" 대기 수
+  if (badge) {
+    const waiting = games.filter((g) => g.myMove).length;
+    badge.textContent = waiting ? String(waiting) : "";
+    badge.classList.toggle("hidden", !waiting);
+  }
   if (!games.length) { el.innerHTML = '<div class="hist-empty">' + T("corr_empty") + "</div>"; return; }
   el.innerHTML = games.map((g) => {
     const opp = g.myColor === "w" ? g.black : (g.myColor === "b" ? g.white : (g.white + " vs " + g.black));
@@ -3564,7 +3573,10 @@ if ($("corrResignBtn")) $("corrResignBtn").onclick = () => corrResignGame();
 if ($("ladderBtn")) $("ladderBtn").onclick = () => startLadder();     // MODE3
 if ($("bossBtn")) $("bossBtn").onclick = () => openBossModal();       // MODE6
 if ($("bossClose")) $("bossClose").onclick = () => closeBossModal();
-document.querySelectorAll("[data-odds]").forEach((b) => { b.onclick = () => startOdds(b.dataset.odds); });   // MODE4
+document.querySelectorAll("[data-odds]").forEach((b) => {   // MODE4 · [29] confirm first
+  b.onclick = () => confirmAction(t("confirm_odds").replace("{p}", b.textContent.trim()),
+    () => startOdds(b.dataset.odds));
+});
 if ($("endgameBtn")) $("endgameBtn").onclick = () => openEndgameModal();   // MODE7
 if ($("egClose")) $("egClose").onclick = () => closeEndgameModal();
 // --- Cross (plus-shaped) 3/4-player chess ---
@@ -3799,6 +3811,12 @@ function ogClockNow(color) {
   }
   return Math.max(0, v);
 }
+// [19] stable per-name avatar colour (hash -> hue) so opponents are distinct
+function avaColor(name) {
+  let h = 0; const str = String(name || "?");
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 360;
+  return `hsl(${h} 45% 42%)`;
+}
 function fmtClock(s) {
   s = Math.max(0, Math.ceil(s));
   return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
@@ -3833,10 +3851,10 @@ function renderPbars() {
     const active = OG.started && !OG.over && OG.state.turn === color;
     const t = ogClockNow(color);
     el.innerHTML =
-      `<span class="pv-ava ${isMe ? "me" : ""}">${escapeHtml((name || "?").charAt(0).toUpperCase())}</span>` +
+      `<span class="pv-ava tinted ${isMe ? "me" : ""}" style="background:${avaColor(name)}">${escapeHtml((name || "?").charAt(0).toUpperCase())}</span>` +
       `<span class="pv-name">${escapeHtml(name || "")}</span>` +
       `<span class="pv-rating">${ratingHTML(rating)}</span>` +
-      `<span class="pv-clock ${active ? "active" : ""} ${t < 60 ? "low" : ""}">⏱ ${fmtClock(t)}</span>` +
+      `<span class="pv-clock ${active ? "active" : ""} ${t < 10 ? "critical low" : t < 30 ? "low" : ""}">⏱ ${fmtClock(t)}</span>` +
       `<span class="pv-caps">${caps.map((c) => GLYPH[c]).join("")}` +
       `${lead > 0 ? `<b class="pv-lead">+${lead}</b>` : ""}</span>`;
   };
@@ -4209,7 +4227,7 @@ function updateOgTurn() {
   const w = st.turn === "w", mine = st.turn === OG.color;
   el.innerHTML = `<span class="pill ${w ? "" : "b"}"></span>${w ? T("turn_white") : T("turn_black")}` +
     (mine ? " " + T("turn_you") : ` (${escapeHtml(OG.opponent || t("og_opp"))})`) +
-    (st.check ? ` · <b style='color:#ff8a80'>${T("turn_check")}</b>` : "");
+    (st.check ? ` · <b class="chk-flag">${T("turn_check")}</b>` : "");
 }
 
 function ogEnd(result, reason, rInfo) {
@@ -4309,9 +4327,26 @@ $("ogJoin").onclick = () => {
   ogFresh(() => ogSend({ type: "join", code, name: ogName(), rating: myRating(), token: ogToken() }));
 };
 $("ogCancel").onclick = () => ogSend({ type: "cancel" });
+if ($("ogCodeCopy")) $("ogCodeCopy").onclick = () => {          // [12]
+  const code = ($("ogCode").textContent || "").trim();
+  if (!code) return;
+  try {
+    navigator.clipboard.writeText(code);
+    const b = $("ogCodeCopy"), old = b.textContent;
+    b.textContent = t("copied_flash"); setTimeout(() => { b.textContent = old; }, 1200);
+  } catch (e) {}
+};
+// [2] resigning is irreversible and costs rating — it must not be a single tap.
+// Reuses the same confirm pattern the (far less costly) draw offer already has.
+function confirmAction(msg, onYes) {
+  const T = (typeof t === "function") ? t : ((k) => k);
+  presentResult({ kind: "draw", icon: "⚠️", title: T("confirm_title"), sub: msg,
+    actions: [{ label: T("confirm_yes"), primary: true, onClick: onYes },
+              { label: T("confirm_no"), onClick: () => {} }] });
+}
 $("ogResign").onclick = () => {
   if (!OG.started || OG.over) { setStatus("ogStatus", t("og_no_game"), true); return; }
-  ogSend({ type: "resign" });
+  confirmAction(t("confirm_resign"), () => ogSend({ type: "resign" }));
 };
 $("ogDraw").onclick = () => {
   if (!OG.started || OG.over) { setStatus("ogStatus", t("og_no_game"), true); return; }
@@ -4380,7 +4415,10 @@ function ogExitGame() {
   document.body.classList.remove("ingame");
   $("ogChat").classList.add("hidden");
 }
-$("ogChatToggle").onclick = () => $("ogChat").classList.toggle("hidden");
+$("ogChatToggle").onclick = () => {
+  const hidden = $("ogChat").classList.toggle("hidden");
+  $("ogChatToggle").setAttribute("aria-expanded", String(!hidden));
+};
 
 // ---- in-game chat ----
 function ogAppendChat(who, text, me) {
